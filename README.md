@@ -197,7 +197,7 @@ See `examples/` for sample configurations:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+Proprietary and confidential (`UNLICENSED`). Copyright (c) 2026 Goobits. All rights reserved. See [LICENSE](LICENSE).
 
 ## Links
 
