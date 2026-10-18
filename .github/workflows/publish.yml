@@ -3,10 +3,14 @@ name: Publish to PyPI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
@@ -40,6 +44,7 @@ jobs:
     name: Build Distribution
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -72,6 +77,7 @@ jobs:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/project/goobits-cli/
@@ -94,7 +100,8 @@ jobs:
     name: Publish to TestPyPI (Optional)
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && contains(github.ref, '-rc')  # Only for release candidates
+    timeout-minutes: 10
+    if: github.ref_type == 'tag' && contains(github.ref, '-rc')  # Only for release candidates
     environment:
       name: test-pypi
       url: https://test.pypi.org/project/goobits-cli/
@@ -117,6 +124,7 @@ jobs:
     name: Create GitHub Release
     needs: publish-pypi
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     
