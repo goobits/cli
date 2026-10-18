@@ -148,6 +148,7 @@ jobs:
         draft: false
         prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
         files: dist/*
+        generate_release_notes: true
         body: |
           ## 🎉 Goobits CLI Framework v${{ steps.version.outputs.VERSION }}
           
@@ -156,7 +157,7 @@ jobs:
           pip install goobits-cli==${{ steps.version.outputs.VERSION }}
           ```
           
-          ### What's Changed
+          ### Changelog
           See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
           
           ### Quick Start
