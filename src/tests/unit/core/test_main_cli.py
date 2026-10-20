@@ -660,7 +660,9 @@ messages:
         result = self.runner.invoke(app, ["build", str(config_path)])
 
         assert result.exit_code == 1
-        assert "Configuration Validation Errors" in result.stdout
+        assert "Configuration Validation Errors" in result.stderr
+        assert "Field 'cli': Field required" in result.stderr
+        assert "Generating CLI scripts..." not in result.stdout
 
     @patch("goobits_cli.commands.build.update_pyproject_toml")
     def test_build_command_pyproject_update_failure(self, mock_update):
