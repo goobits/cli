@@ -21,121 +21,19 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "conformance"
 
 
 def manifest(broken=False):
-    target = str(FIXTURES / ("broken.py" if broken else "conforming.py"))
-    probe = {"argv": ["item", "read", "--json"], "command": "tiny item read"}
-    probes = {name: copy.deepcopy(probe) for name in SCENARIOS}
-    for name, code in dict(
-        CODES, **{"multiple-errors": 5, "stream-failure": 5, "partial-failure": 5}
-    ).items():
-        probes[name]["exit"] = code
-    probes["confirmation-yes"] = dict(
-        copy.deepcopy(probe), argv=["item", "read", "--yes", "--json"], effects=1
+    value = json.loads(
+        (FIXTURES.parents[3] / "docs" / "conformance.example.json").read_text()
     )
-    probes["expiry"]["inspection_command"] = "tiny item inspect"
-    probes["unknown-version"]["error_codes"] = ["unknown-version"]
-    for name in ("acceptance", "completion"):
-        probes[name].update(
-            argv=["item", "submit", "--json"],
-            command="tiny item submit",
-            inspection_command="tiny item inspect",
-            inspection_argv=["item", "inspect", "--json"],
-        )
-    probes["acceptance"]["status"] = "accepted"
-    for name in ("mutation", "lost-response"):
-        probes[name].update(
-            argv=["item", "write", "--json"],
-            command="tiny item write",
-            effects=1,
-            different_input=["--changed"],
-            equivalent_argv=["--json", "item", "write"],
-        )
-    cases = []
-    for kind in ("help", "version"):
-        for machine in (False, True):
-            for leaf in (False, True):
-                args = (
-                    (["--json"] if machine else [])
-                    + (["item", "read"] if leaf else [])
-                    + ["--" + kind]
-                )
-                cases.append(
-                    {
-                        "argv": args,
-                        "kind": "text" if kind == "help" else kind,
-                        "json": machine,
-                        "command": "tiny item read" if leaf else "tiny",
-                    }
-                )
-    for argv, kind in [
-        (["--help", "--version"], "text"),
-        (["--version", "--help"], "version"),
-        (["--help", "--quiet", "--verbose"], "text"),
-    ]:
-        cases.append({"argv": argv, "kind": kind, "json": False, "command": "tiny"})
-    return {
-        "manifest_version": 1,
-        "name": "tiny",
-        "version": "1.2.3",
-        "executable": [sys.executable, target],
-        "command_tree": [
-            "tiny item read",
-            "tiny item write",
-            "tiny item submit",
-            "tiny item inspect",
-        ],
-        "long_flags": [
-            "--json",
-            "--help",
-            "--version",
-            "--quiet",
-            "--verbose",
-            "--yes",
-            "--no-input",
-            "--idempotency-key",
-        ],
-        "payload_schema": {"identifier": "tiny.payload", "version": 1},
-        "help_required": [
-            "usage",
-            "arguments",
-            "defaults",
-            "examples",
-            "side effects",
-            "exit codes",
-            "configuration precedence",
-            "project",
-            "config",
-            "schema",
-            "mapping",
-            "simultaneous failures",
-            "scope",
-            "retention",
-        ],
-        "fixture": {
-            "argv": [sys.executable, str(FIXTURES / "conforming.py"), "fixture"],
-            "isolation": "GOOBITS_CONFORMANCE_STATE private directory",
-        },
-        "help_version": {
-            "precedence": "first",
-            "trailing_options": "recognized",
-            "cases": cases,
-        },
-        "aliases": [
-            {
-                "argv": ["item", "old-read", "--json"],
-                "canonical": "tiny item read",
-                "canonical_argv": ["item", "read", "--json"],
-            }
-        ],
-        "probes": probes,
-        "inapplicable": {},
-        "retry": {
-            "flag": "--idempotency-key",
-            "receipt_field": "data.idempotency_key",
-            "scope": "tool item and normalized input",
-            "retention": "24h",
-            "conflict_code": "conflict",
-        },
-    }
+    value["executable"] = [
+        sys.executable,
+        str(FIXTURES / ("broken.py" if broken else "conforming.py")),
+    ]
+    value["fixture"]["argv"] = [
+        sys.executable,
+        str(FIXTURES / "conforming.py"),
+        "fixture",
+    ]
+    return value
 
 
 def write_manifest(tmp_path, value):

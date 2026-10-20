@@ -32,7 +32,16 @@ def run_cli(argv: List[str]) -> int:
     data = None
     errors = []
     code = 0
-    command = "goobits conformance check"
+    words = [
+        a
+        for a in argv
+        if a not in {"--json", "--quiet", "--verbose", "--yes", "--no-input"}
+    ]
+    command = "goobits"
+    for part in ("conformance", "check"):
+        if not words or words.pop(0) != part:
+            break
+        command += " " + part
     try:
         if "--help" in argv or "--version" in argv:
             # Native eager rule: first eager flag wins; JSON is recognized globally.

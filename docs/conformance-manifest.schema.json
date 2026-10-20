@@ -1,0 +1,639 @@
+{
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifest_version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executable": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "command_tree": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "entrypoint_exceptions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "long_flags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^--[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+      }
+    },
+    "payload_schema": {
+      "type": "object",
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ]
+        }
+      },
+      "required": [
+        "identifier",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "help_required": {
+      "type": "object",
+      "properties": {
+        "usage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaults": {
+          "type": "string",
+          "minLength": 1
+        },
+        "examples": {
+          "type": "string",
+          "minLength": 1
+        },
+        "side effects": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exit codes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "configuration precedence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mapping": {
+          "type": "string",
+          "minLength": 1
+        },
+        "simultaneous failures": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retention": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "usage",
+        "arguments",
+        "defaults",
+        "examples",
+        "side effects",
+        "exit codes",
+        "configuration precedence",
+        "project",
+        "config",
+        "schema",
+        "mapping",
+        "simultaneous failures"
+      ],
+      "additionalProperties": false
+    },
+    "help_version": {
+      "type": "object",
+      "properties": {
+        "precedence": {
+          "enum": [
+            "help",
+            "version",
+            "first"
+          ]
+        },
+        "trailing_options": {
+          "enum": [
+            "recognized",
+            "eager"
+          ]
+        },
+        "leaf_argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "leaf_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "missing_argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "missing_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_usage": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "argv": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "kind": {
+                "enum": [
+                  "text",
+                  "version"
+                ]
+              },
+              "json": {
+                "type": "boolean"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "argv",
+              "kind",
+              "json",
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 14
+        }
+      },
+      "required": [
+        "precedence",
+        "trailing_options",
+        "leaf_argv",
+        "leaf_command",
+        "missing_argv",
+        "missing_command",
+        "scope_usage",
+        "cases"
+      ],
+      "additionalProperties": false
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "canonical": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canonical_argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "argv",
+          "canonical",
+          "canonical_argv"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exit": {
+            "type": "integer",
+            "enum": [
+              0,
+              2,
+              3,
+              4,
+              5,
+              124,
+              130
+            ]
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "completed",
+              "failed"
+            ]
+          },
+          "effects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expect": {
+            "type": "object"
+          },
+          "error_codes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "inspection_command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inspection_argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "inspection_effects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "setup_argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "different_input": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "equivalent_argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "stream": {
+            "type": "boolean"
+          },
+          "dispatch": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "argv",
+          "command"
+        ],
+        "additionalProperties": false
+      },
+      "required": [
+        "read"
+      ]
+    },
+    "inapplicable": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "flag_probes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "retry": {
+      "type": "object",
+      "properties": {
+        "flag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receipt_field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retention": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conflict_code": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "flag",
+        "receipt_field",
+        "scope",
+        "retention",
+        "conflict_code"
+      ],
+      "additionalProperties": false
+    },
+    "fixture": {
+      "type": "object",
+      "properties": {
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "isolation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "argv",
+        "isolation"
+      ],
+      "additionalProperties": false
+    },
+    "timeout_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "legacy_exits": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[0-9]+$"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "enum": [
+          0,
+          2,
+          3,
+          4,
+          5,
+          124,
+          130
+        ]
+      }
+    },
+    "canonical_exit_invocation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "volatile_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "deprecation": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "envelope_mapping": {
+      "type": "object",
+      "properties": {
+        "documentation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ok": {
+              "type": "string",
+              "minLength": 1
+            },
+            "data": {
+              "type": "string",
+              "minLength": 1
+            },
+            "errors": {
+              "type": "string",
+              "minLength": 1
+            },
+            "request_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "status": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "command",
+            "ok",
+            "data",
+            "errors",
+            "request_id",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "error_fields": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "retryable": {
+              "type": "string",
+              "minLength": 1
+            },
+            "next_action": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable",
+            "next_action",
+            "target"
+          ],
+          "additionalProperties": false
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "documentation",
+        "fields",
+        "error_fields",
+        "versions",
+        "statuses"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "manifest_version",
+    "name",
+    "version",
+    "executable",
+    "command_tree",
+    "long_flags",
+    "payload_schema",
+    "help_required",
+    "help_version",
+    "aliases",
+    "probes",
+    "inapplicable",
+    "fixture"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Goobits conformance manifest version 1"
+}

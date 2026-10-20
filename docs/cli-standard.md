@@ -167,60 +167,82 @@ Butter owns its full command tree, arguments, and payloads.
 
 ## Running the suite
 
-Add a version 1 JSON manifest at a documented path in your tool's repository, then run
-`goobits conformance check --manifest path/to/conformance.json --json`. Exit 0 means
-all assertions passed; exit 3 means checks failed. Each result includes the standard
-section, failure detail, and a fix hint. Run only manifests you trust: the suite executes
-their argv arrays. No shell expansion or target imports are used.
+Publish a version 1 JSON manifest and run:
 
-The executable and fixture argv are resolved from the manifest's directory. Start with
-the executable manifest example in `src/tests/unit/test_conformance.py` (`manifest`)
-and the local backend in `src/tests/fixtures/conformance/conforming.py`:
+```sh
+goobits conformance check --manifest docs/conformance.example.json --json
+```
 
-| Manifest field | Version 1 contract |
-| --- | --- |
-| `manifest_version`, `name`, `version` | `1`, executable name, executable release version string. |
-| `executable` | Nonempty argv prefix, e.g. `["python3", "cli.py"]`. |
-| `command_tree`, `entrypoint_exceptions`, `long_flags` | Full canonical paths, allowed short domain entrypoints, and supported long flag names. Every canonical leaf needs a safe probe or declared inspection command. |
-| `payload_schema` | Object with independent payload `identifier` and `version`. |
-| `help_required` | Case-insensitive help tokens (array shorthand, or concept-to-phrase object for native wording): `usage`, `arguments`, `defaults`, `examples`, `side effects`, `exit codes`, `configuration precedence`, `project`, `config`, `schema`, `mapping`, `simultaneous failures`; include retry `scope` and `retention` for mutations. |
-| `help_version` | `precedence`: `help`, `version`, or `first`; `trailing_options`: native handling description; `cases`: exact argv/expected rendering cases. Each case has `argv`, canonical `command`, `kind` (`text` for help or `version`), and boolean `json`. Include root/leaf help, both help/version orders, missing operands, conflicting quiet/verbose, and trailing JSON before/after eager rendering. Declare plain and JSON cases for both help and version. |
-| `aliases` | Array of `{argv, canonical, canonical_argv}` safe invocations, including repeated deprecated spellings in one process where supported. Use `[]` when none exist. |
-| `probes` | Map of scenario names to `{argv, command}`; argv selects JSON. Optional `exit`, `status`, `effects` (default 0), `expect` (dotted receipt paths to exact values), and `error_codes` assert tool-owned outcomes. Canonical error scenarios have fixed exit categories. Use `expect` to assert the tool's documented postconditions and partial results. |
-| `inapplicable` | Scenario names mapped to explicit reasons. Required scenarios cannot simply be omitted. Service-free tools still provide local mutation/retry probes where applicable. |
-| `retry` | For mutations: `flag`, `receipt_field` (dotted receipt path), `scope`, `retention`, and stable `conflict_code`. Mutation and lost-response probes add `different_input` argv for conflict tests and `equivalent_argv` for the same normalized input expressed differently. |
-| `fixture` | `argv` for the fixture hook, `isolation` description, optional `env` selecting the isolated endpoint/backend. Never select production services or credentials. |
-| `legacy_exits` | Optional object mapping legacy numeric exit strings to canonical categories; document their deprecation and canonical invocation in help. Exit 1 never qualifies. |
-| `timeout_seconds` | Per-subprocess deadline, default 5. A hung command is a failed check. |
+The [usable JSON example](conformance.example.json) runs this repository's isolated
+fixture CLI. Copy it and replace the executable, argv, documentation passages and
+fixture hook for your tool. Validate authoring against the standalone
+[JSON manifest schema](conformance-manifest.schema.json). For example, these are the
+example's executable and fixture declarations (paths resolve from the manifest):
 
-Required scenarios are `read`, `missing-input`, `invalid-input`, `invalid-flag`,
-`conflict` (quiet/verbose), `confirmation`, `owner-decision`, `denial`, `unavailable`,
-`verification`, `timeout`, `interrupt`, `partial-failure`, `multiple-errors`,
-`acceptance`, `completion`, `stream`, `stream-failure`, `mutation`, `lost-response`,
-`unknown-fields`, `unknown-version`, and `expiry`. Applicable confirmation additionally
-needs `confirmation-yes`. Acceptance probes specify `status: "accepted"`, an exact
-`inspection_command`, and `inspection_argv`; the latter must return completion with the
-same operation and request IDs. Streaming probes use JSONL, including a terminal receipt
-on handled failure. Set `error_codes` on unsupported-version probes. Mutation probes
-must support a generated key and a supplied key. The suite replays the supplied key,
-changes input, and repeats after a lost committed response.
+```json
+{
+  "executable": ["python3", "../src/tests/fixtures/conformance/conforming.py"],
+  "fixture": {
+    "argv": ["python3", "../src/tests/fixtures/conformance/conforming.py", "fixture"],
+    "isolation": "GOOBITS_CONFORMANCE_STATE private directory"
+  }
+}
+```
 
-The fixture hook accepts one JSON request on stdin and returns one JSON object on stdout:
-`{"action":"reset"|"inspect","scenario":"SCENARIO"}`. `reset` clears state and
-configures the named fault/outcome; `inspect` observes without changing it. Both return
-`effects` and `prompts` integer counts, `service_calls` integer count,
-`request_ids` (forwarded IDs), and `postcondition` (boolean verified against actual local
-state). Retry inspection also returns `operation_id` and `request_id` from the committed
-operation. Expiry inspection returns `expired: true`; its receipt's `data.next_action`
-must match its declared `inspection_command` for inspection before retry. Unknown-field/version injections report
-`unknown_fields_sent` or `unknown_version_sent`. These observations must come from the
-backend, not hardcoded success assertions. Simulate lost responses only after committing.
-The suite provides a private `GOOBITS_CONFORMANCE_STATE` directory plus isolated HOME and
-TMPDIR, removes inherited credentials, and applies `fixture.env` to both subprocesses.
-TTY probes additionally exercise each half-TTY and JSON/no-input on a full TTY on POSIX.
+Exit 0 means all checks passed; exit 3 reports failed rules, section links and fix hints.
+Only run trusted manifests: both argv arrays execute subprocesses. The suite supplies a
+private `GOOBITS_CONFORMANCE_STATE`, HOME and TMPDIR, strips inherited credentials, and
+applies `fixture.env` to the target and hook. The hook receives one stdin JSON request
+`{"action":"reset","scenario":"read"}` or `{"action":"inspect","scenario":"read"}`
+and returns an observation object. Reset configures the isolated scenario; inspection
+must observe actual backend/local state without mutating it.
 
-Existing envelopes may supply `envelope_mapping`: `documentation` (schema/mapping path),
-`fields` (each canonical envelope field to a dotted native field path), `error_fields`
-(each canonical error field to its native path), `versions` (supported native version
-strings), and `statuses` (native to canonical status values). The suite translates this
-published semantic mapping before applying the same type and behavior assertions.
+Mechanically checked: envelope/error types, JSON/JSONL framing, canonical paths, exits,
+shared flags on every declared path, stable verbose/quiet results, quiet diagnostic
+patterns, all 14 required eager cases (including missing operands, root scope and
+trailing JSON), offline help/version, noninteractive behavior, receipts and retry effects.
+POSIX JSON TTY checks run with color-capable settings and no `NO_COLOR` override.
+`help_required` maps documentation topics to concrete passages, not keywords: the suite
+checks their presence, scope usage, schema identifiers/versions, exit numbers and retry
+values. Authors still attest that those passages truthfully describe defaults, config
+precedence, category selection, schemas, retry scope/retention and postconditions.
+Completeness of the canonical tree, diagnostic classification and inapplicability
+reasons is also declared; subprocess tests cannot discover undocumented interfaces.
+
+`probes` declare safe argv, canonical command, optional exit/status, effects, expected
+receipt paths and setup argv. Every scenario in the example must appear or have an
+explicit `inapplicable` reason. `flag_probes` chooses a representative invocation per
+path, including streams, failures and inspection commands. `volatile_paths` excludes
+only documented generated identities/timestamps from result comparison; do not exclude
+business results. `diagnostics.error` and `.deprecation` contain full-line regexes for
+stderr allowed under quiet; informational diagnostics are never allowed there.
+`help_version` declares native eager precedence, trailing JSON recognition and exact
+named cases. The runner rejects omissions or shapes inconsistent with its case table.
+
+Hook observations include `effects`, `prompts`, `service_calls`, forwarded `request_ids`
+and a verified `postcondition`. Record actual injected payloads in `upstream_messages`
+and derive `unknown_fields_sent`/`unknown_version_sent` from them. For retries expose the
+stored `operation_id` and `request_id`; for expiry expose `clock`, `expired_entries`
+(with `expires_at`) and derived `expired`. Mutation probes declare `equivalent_argv`
+and `different_input` to check normalization, deduplication and conflicts. Accepted
+receipts declare an exact inspection command and argv. Correlation forwarding is
+checked when dispatch is observed or the probe declares `dispatch: true`.
+
+Existing contracts may declare `envelope_mapping` (documented native field paths,
+versions and status meanings) and `legacy_exits` (numeric exit strings to categories).
+Help must include the deprecation and `canonical_exit_invocation`; mappings apply to
+all checks, including interactions and retries. JSONL accepts any valid nonterminal
+records allowed by the standard and requires a final terminal receipt.
+
+Native [Rust](../src/tests/fixtures/conformance/pilots/rust.manifest.json) and
+[TypeScript](../src/tests/fixtures/conformance/pilots/typescript.manifest.json) pilots
+exercise distinct native eager parsers, mapped envelopes and legacy exits. Build their
+executables outside the checkout before running their manifests:
+
+```sh
+mkdir -p /var/tmp/matilda/workspace/conformance-pilots
+rustc src/tests/fixtures/conformance/pilots/rust.rs -o /var/tmp/matilda/workspace/conformance-pilots/rust-pilot
+tsc src/tests/fixtures/conformance/pilots/typescript.ts --target es2020 --outDir /var/tmp/matilda/workspace/conformance-pilots
+goobits conformance check --manifest src/tests/fixtures/conformance/pilots/rust.manifest.json --json
+goobits conformance check --manifest src/tests/fixtures/conformance/pilots/typescript.manifest.json --json
+```

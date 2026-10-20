@@ -1,0 +1,548 @@
+{
+  "manifest_version": 1,
+  "name": "tiny",
+  "version": "1.2.3",
+  "executable": [
+    "python3",
+    "../src/tests/fixtures/conformance/conforming.py"
+  ],
+  "command_tree": [
+    "tiny item read",
+    "tiny item require",
+    "tiny item write",
+    "tiny item submit",
+    "tiny item inspect",
+    "tiny item stream",
+    "tiny item fail"
+  ],
+  "long_flags": [
+    "--json",
+    "--help",
+    "--version",
+    "--quiet",
+    "--verbose",
+    "--yes",
+    "--no-input",
+    "--idempotency-key",
+    "--changed",
+    "--confirm",
+    "--owner",
+    "--verify",
+    "--value",
+    "--scope"
+  ],
+  "payload_schema": {
+    "identifier": "tiny.payload",
+    "version": 1
+  },
+  "help_required": {
+    "usage": "Usage: tiny item read|require|write|submit|inspect|stream|fail [OPTIONS]",
+    "arguments": "Arguments: require INPUT is mandatory; write --value TEXT selects content.",
+    "defaults": "Defaults: --value=value; --scope=item; no configuration files.",
+    "examples": "Examples: tiny item read --json; tiny item require INPUT --json.",
+    "side effects": "Side effects: write stores content; submit creates work; inspect completes pending work.",
+    "exit codes": "Exit codes: 0 completed/accepted, 1 crash, 2 usage, 3 verification, 4 blocked, 5 service, 124 deadline, 130 interrupted.",
+    "configuration precedence": "Configuration precedence: explicit flags > defaults; config/project files are unsupported.",
+    "project": "Project options: none supported.",
+    "config": "Config options: none supported.",
+    "schema": "Payload schema: tiny.payload version 1, independent of executable 1.2.3.",
+    "mapping": "Mapping: identity Goobits envelope and error fields; docs/cli-standard.md#interaction-and-output.",
+    "simultaneous failures": "Simultaneous failures: retain all errors; service errors select category 5 before validation category 2.",
+    "scope": "Retry scope: resource selected by --scope, default item; same scope and key identify one operation.",
+    "retention": "Retry retention: 24h; inspect tiny item inspect before retrying an expired key."
+  },
+  "fixture": {
+    "argv": [
+      "python3",
+      "../src/tests/fixtures/conformance/conforming.py",
+      "fixture"
+    ],
+    "isolation": "GOOBITS_CONFORMANCE_STATE private directory"
+  },
+  "help_version": {
+    "precedence": "first",
+    "trailing_options": "recognized",
+    "cases": [
+      {
+        "id": "root-help",
+        "argv": [
+          "--help"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "tiny"
+      },
+      {
+        "id": "root-help-command",
+        "argv": [
+          "--help",
+          "item",
+          "require"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "tiny"
+      },
+      {
+        "id": "leaf-help",
+        "argv": [
+          "item",
+          "require",
+          "--help"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "tiny item require"
+      },
+      {
+        "id": "root-version",
+        "argv": [
+          "--version"
+        ],
+        "kind": "version",
+        "json": false,
+        "command": "tiny"
+      },
+      {
+        "id": "help-missing-input",
+        "argv": [
+          "item",
+          "require",
+          "--help"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "tiny item require"
+      },
+      {
+        "id": "text-conflict",
+        "argv": [
+          "item",
+          "require",
+          "--help",
+          "--quiet",
+          "--verbose"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "tiny item require"
+      },
+      {
+        "id": "json-help-before",
+        "argv": [
+          "--json",
+          "item",
+          "require",
+          "--help"
+        ],
+        "kind": "text",
+        "json": true,
+        "command": "tiny item require"
+      },
+      {
+        "id": "json-help-after",
+        "argv": [
+          "item",
+          "require",
+          "--help",
+          "--json"
+        ],
+        "kind": "text",
+        "json": true,
+        "command": "tiny item require"
+      },
+      {
+        "id": "version-missing-input",
+        "argv": [
+          "item",
+          "require",
+          "--version"
+        ],
+        "kind": "version",
+        "json": false,
+        "command": "tiny item require"
+      },
+      {
+        "id": "version-conflict",
+        "argv": [
+          "item",
+          "require",
+          "--version",
+          "--quiet",
+          "--verbose"
+        ],
+        "kind": "version",
+        "json": false,
+        "command": "tiny item require"
+      },
+      {
+        "id": "json-version-before",
+        "argv": [
+          "--json",
+          "item",
+          "require",
+          "--version"
+        ],
+        "kind": "version",
+        "json": true,
+        "command": "tiny item require"
+      },
+      {
+        "id": "json-version-after",
+        "argv": [
+          "item",
+          "require",
+          "--version",
+          "--json"
+        ],
+        "kind": "version",
+        "json": true,
+        "command": "tiny item require"
+      },
+      {
+        "id": "help-version",
+        "argv": [
+          "--help",
+          "--version"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "tiny"
+      },
+      {
+        "id": "version-help",
+        "argv": [
+          "--version",
+          "--help"
+        ],
+        "kind": "version",
+        "json": false,
+        "command": "tiny"
+      }
+    ],
+    "leaf_argv": [
+      "item",
+      "require"
+    ],
+    "leaf_command": "tiny item require",
+    "missing_argv": [
+      "item",
+      "require"
+    ],
+    "missing_command": "tiny item require",
+    "scope_usage": {
+      "tiny": "Usage: tiny [OPTIONS]",
+      "tiny item require": "Usage: tiny item require INPUT [OPTIONS]"
+    }
+  },
+  "aliases": [
+    {
+      "argv": [
+        "item",
+        "old-read",
+        "--json"
+      ],
+      "canonical": "tiny item read",
+      "canonical_argv": [
+        "item",
+        "read",
+        "--json"
+      ]
+    }
+  ],
+  "probes": {
+    "conflict": {
+      "argv": [
+        "item",
+        "read",
+        "--quiet",
+        "--verbose",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 2
+    },
+    "owner-decision": {
+      "argv": [
+        "item",
+        "read",
+        "--owner",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 4
+    },
+    "completion": {
+      "argv": [
+        "item",
+        "inspect",
+        "--json"
+      ],
+      "command": "tiny item inspect",
+      "inspection_command": "tiny item inspect",
+      "inspection_argv": [
+        "item",
+        "inspect",
+        "--json"
+      ],
+      "setup_argv": [
+        "item",
+        "submit",
+        "--json"
+      ],
+      "effects": 1
+    },
+    "unknown-fields": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "tiny item read"
+    },
+    "stream-failure": {
+      "argv": [
+        "item",
+        "stream",
+        "--json"
+      ],
+      "command": "tiny item stream",
+      "exit": 5,
+      "stream": true
+    },
+    "stream": {
+      "argv": [
+        "item",
+        "stream",
+        "--json"
+      ],
+      "command": "tiny item stream",
+      "stream": true
+    },
+    "lost-response": {
+      "argv": [
+        "item",
+        "write",
+        "--json"
+      ],
+      "command": "tiny item write",
+      "effects": 1,
+      "different_input": [
+        "--changed"
+      ],
+      "equivalent_argv": [
+        "--json",
+        "item",
+        "write",
+        "--value",
+        " value "
+      ]
+    },
+    "invalid-input": {
+      "argv": [
+        "item",
+        "read",
+        "--value",
+        "",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 2
+    },
+    "denial": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 4
+    },
+    "unknown-version": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 2,
+      "error_codes": [
+        "unknown-version"
+      ]
+    },
+    "partial-failure": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 5
+    },
+    "unavailable": {
+      "argv": [
+        "item",
+        "fail",
+        "--json"
+      ],
+      "command": "tiny item fail",
+      "exit": 5
+    },
+    "mutation": {
+      "argv": [
+        "item",
+        "write",
+        "--json"
+      ],
+      "command": "tiny item write",
+      "effects": 1,
+      "different_input": [
+        "--changed"
+      ],
+      "equivalent_argv": [
+        "--json",
+        "item",
+        "write",
+        "--value",
+        " value "
+      ]
+    },
+    "verification": {
+      "argv": [
+        "item",
+        "read",
+        "--verify",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 3
+    },
+    "timeout": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 124
+    },
+    "invalid-flag": {
+      "argv": [
+        "item",
+        "read",
+        "--bad",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 2
+    },
+    "confirmation": {
+      "argv": [
+        "item",
+        "write",
+        "--confirm",
+        "--json"
+      ],
+      "command": "tiny item write",
+      "exit": 4
+    },
+    "acceptance": {
+      "argv": [
+        "item",
+        "submit",
+        "--json"
+      ],
+      "command": "tiny item submit",
+      "inspection_command": "tiny item inspect",
+      "inspection_argv": [
+        "item",
+        "inspect",
+        "--json"
+      ],
+      "status": "accepted",
+      "inspection_effects": 1
+    },
+    "interrupt": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 130
+    },
+    "expiry": {
+      "argv": [
+        "item",
+        "inspect",
+        "--json"
+      ],
+      "command": "tiny item inspect",
+      "inspection_command": "tiny item inspect"
+    },
+    "read": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "tiny item read"
+    },
+    "multiple-errors": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "tiny item read",
+      "exit": 5
+    },
+    "missing-input": {
+      "argv": [
+        "item",
+        "require",
+        "--json"
+      ],
+      "command": "tiny item require",
+      "exit": 2
+    },
+    "confirmation-yes": {
+      "argv": [
+        "item",
+        "write",
+        "--confirm",
+        "--yes",
+        "--json"
+      ],
+      "command": "tiny item write",
+      "effects": 1
+    }
+  },
+  "inapplicable": {},
+  "retry": {
+    "flag": "--idempotency-key",
+    "receipt_field": "data.idempotency_key",
+    "scope": "resource selected by --scope, default item",
+    "retention": "24h",
+    "conflict_code": "conflict"
+  },
+  "$schema": "conformance-manifest.schema.json",
+  "flag_probes": {
+    "tiny item read": "read",
+    "tiny item require": "missing-input",
+    "tiny item write": "mutation",
+    "tiny item submit": "acceptance",
+    "tiny item stream": "stream",
+    "tiny item fail": "unavailable"
+  },
+  "volatile_paths": [
+    "data.operation_id",
+    "data.idempotency_key"
+  ],
+  "diagnostics": {
+    "deprecation": [
+      "deprecated: use tiny item read",
+      "deprecated: old option; use --value"
+    ]
+  }
+}

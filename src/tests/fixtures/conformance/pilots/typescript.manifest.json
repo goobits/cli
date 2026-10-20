@@ -1,0 +1,324 @@
+{
+  "$schema": "../../../../../docs/conformance-manifest.schema.json",
+  "manifest_version": 1,
+  "name": "pilot",
+  "version": "2.0.0",
+  "executable": [
+    "node",
+    "/var/tmp/matilda/workspace/conformance-pilots/typescript.js"
+  ],
+  "command_tree": [
+    "pilot item read",
+    "pilot item require"
+  ],
+  "long_flags": [
+    "--json",
+    "--help",
+    "--version",
+    "--quiet",
+    "--verbose",
+    "--yes",
+    "--no-input",
+    "--canonical-exits"
+  ],
+  "payload_schema": {
+    "identifier": "pilot.payload",
+    "version": 2
+  },
+  "help_required": {
+    "usage": "Usage: pilot item read|require INPUT [OPTIONS]",
+    "arguments": "Arguments: require INPUT is mandatory; read has no required operands.",
+    "defaults": "Defaults: no input, config file, project or service is selected.",
+    "examples": "Examples: pilot item read --json; pilot item require INPUT --json.",
+    "side effects": "Side effects: isolated output observation only; no service or resource mutations.",
+    "exit codes": "Exit codes: 0 completed/accepted, 1 crash, 2 usage, 3 verification, 4 blocked, 5 service, 124 deadline, 130 interrupted.",
+    "configuration precedence": "Configuration precedence: explicit flags only; no config or project files.",
+    "project": "Project options: none supported.",
+    "config": "Config options: none supported.",
+    "schema": "Payload schema: pilot.payload version 2, independent of executable 2.0.0.",
+    "mapping": "Mapping: contract=v2, path=command, success=ok, payload=data, problems=errors, correlation=request_id, state=done/completed or failed/failed; errors use identity field mappings.",
+    "simultaneous failures": "Simultaneous failures: usage category 2 takes precedence; parse failures retain their error."
+  },
+  "help_version": {
+    "precedence": "first",
+    "trailing_options": "recognized",
+    "leaf_argv": [
+      "item",
+      "require"
+    ],
+    "leaf_command": "pilot item require",
+    "missing_argv": [
+      "item",
+      "require"
+    ],
+    "missing_command": "pilot item require",
+    "scope_usage": {
+      "pilot": "Usage: pilot [OPTIONS]",
+      "pilot item require": "Usage: pilot item require INPUT [OPTIONS]"
+    },
+    "cases": [
+      {
+        "id": "root-help",
+        "argv": [
+          "--help"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "pilot"
+      },
+      {
+        "id": "root-help-command",
+        "argv": [
+          "--help",
+          "item",
+          "require"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "pilot"
+      },
+      {
+        "id": "leaf-help",
+        "argv": [
+          "item",
+          "require",
+          "--help"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "pilot item require"
+      },
+      {
+        "id": "root-version",
+        "argv": [
+          "--version"
+        ],
+        "kind": "version",
+        "json": false,
+        "command": "pilot"
+      },
+      {
+        "id": "help-missing-input",
+        "argv": [
+          "item",
+          "require",
+          "--help"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "pilot item require"
+      },
+      {
+        "id": "text-conflict",
+        "argv": [
+          "item",
+          "require",
+          "--help",
+          "--quiet",
+          "--verbose"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "pilot item require"
+      },
+      {
+        "id": "json-help-before",
+        "argv": [
+          "--json",
+          "item",
+          "require",
+          "--help"
+        ],
+        "kind": "text",
+        "json": true,
+        "command": "pilot item require"
+      },
+      {
+        "id": "json-help-after",
+        "argv": [
+          "item",
+          "require",
+          "--help",
+          "--json"
+        ],
+        "kind": "text",
+        "json": true,
+        "command": "pilot item require"
+      },
+      {
+        "id": "version-missing-input",
+        "argv": [
+          "item",
+          "require",
+          "--version"
+        ],
+        "kind": "version",
+        "json": false,
+        "command": "pilot item require"
+      },
+      {
+        "id": "version-conflict",
+        "argv": [
+          "item",
+          "require",
+          "--version",
+          "--quiet",
+          "--verbose"
+        ],
+        "kind": "version",
+        "json": false,
+        "command": "pilot item require"
+      },
+      {
+        "id": "json-version-before",
+        "argv": [
+          "--json",
+          "item",
+          "require",
+          "--version"
+        ],
+        "kind": "version",
+        "json": true,
+        "command": "pilot item require"
+      },
+      {
+        "id": "json-version-after",
+        "argv": [
+          "item",
+          "require",
+          "--version",
+          "--json"
+        ],
+        "kind": "version",
+        "json": true,
+        "command": "pilot item require"
+      },
+      {
+        "id": "help-version",
+        "argv": [
+          "--help",
+          "--version"
+        ],
+        "kind": "text",
+        "json": false,
+        "command": "pilot"
+      },
+      {
+        "id": "version-help",
+        "argv": [
+          "--version",
+          "--help"
+        ],
+        "kind": "version",
+        "json": false,
+        "command": "pilot"
+      }
+    ]
+  },
+  "aliases": [],
+  "probes": {
+    "read": {
+      "argv": [
+        "item",
+        "read",
+        "--json"
+      ],
+      "command": "pilot item read",
+      "expect": {
+        "data.value": "value"
+      }
+    },
+    "missing-input": {
+      "argv": [
+        "item",
+        "require",
+        "--json"
+      ],
+      "command": "pilot item require"
+    },
+    "invalid-flag": {
+      "argv": [
+        "item",
+        "read",
+        "--bad",
+        "--json"
+      ],
+      "command": "pilot item read"
+    },
+    "conflict": {
+      "argv": [
+        "item",
+        "read",
+        "--quiet",
+        "--verbose",
+        "--json"
+      ],
+      "command": "pilot item read"
+    }
+  },
+  "inapplicable": {
+    "lost-response": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "unknown-version": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "invalid-input": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "multiple-errors": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "acceptance": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "denial": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "stream-failure": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "timeout": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "confirmation": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "mutation": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "owner-decision": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "completion": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "verification": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "interrupt": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "unavailable": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "partial-failure": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "stream": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "expiry": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation.",
+    "unknown-fields": "Local read-only pilot has no service, reader, mutation, confirmation, stream, or long-running operation."
+  },
+  "flag_probes": {
+    "pilot item read": "read",
+    "pilot item require": "missing-input"
+  },
+  "fixture": {
+    "argv": [
+      "python3",
+      "fixture.py"
+    ],
+    "isolation": "Local state under GOOBITS_CONFORMANCE_STATE; no service credentials",
+    "env": {
+      "PILOT_HELP": "help.txt"
+    }
+  },
+  "legacy_exits": {
+    "22": 2
+  },
+  "canonical_exit_invocation": "pilot --canonical-exits item read",
+  "envelope_mapping": {
+    "documentation": "help.txt",
+    "fields": {
+      "schema_version": "contract",
+      "command": "path",
+      "ok": "success",
+      "data": "payload",
+      "errors": "problems",
+      "request_id": "correlation",
+      "status": "state"
+    },
+    "error_fields": {
+      "code": "code",
+      "message": "message",
+      "retryable": "retryable",
+      "next_action": "next_action",
+      "target": "target"
+    },
+    "versions": [
+      "v2"
+    ],
+    "statuses": {
+      "done": "completed",
+      "failed": "failed"
+    }
+  }
+}

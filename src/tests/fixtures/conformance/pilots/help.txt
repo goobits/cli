@@ -1,0 +1,13 @@
+Usage: pilot item read|require INPUT [OPTIONS]
+Arguments: require INPUT is mandatory; read has no required operands.
+Defaults: no input, config file, project or service is selected.
+Examples: pilot item read --json; pilot item require INPUT --json.
+Side effects: isolated output observation only; no service or resource mutations.
+Exit codes: 0 completed/accepted, 1 crash, 2 usage, 3 verification, 4 blocked, 5 service, 124 deadline, 130 interrupted.
+Configuration precedence: explicit flags only; no config or project files.
+Project options: none supported.
+Config options: none supported.
+Payload schema: pilot.payload version 2, independent of executable 2.0.0.
+Mapping: contract=v2, path=command, success=ok, payload=data, problems=errors, correlation=request_id, state=done/completed or failed/failed; errors use identity field mappings.
+Simultaneous failures: usage category 2 takes precedence; parse failures retain their error.
+Legacy exit 22 maps to category 2; deprecated, use pilot --canonical-exits item read for canonical codes.

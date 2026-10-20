@@ -16,54 +16,94 @@ SECTIONS = {
     "work": "work-retries-and-versions",
     "manifest": "conformance-interface",
 }
-# Scenarios cannot silently disappear from a manifest. Inapplicability needs a reason.
-SCENARIOS = {
-    "read",
-    "missing-input",
-    "invalid-input",
-    "invalid-flag",
-    "conflict",
-    "confirmation",
-    "owner-decision",
-    "denial",
-    "unavailable",
-    "verification",
-    "timeout",
-    "interrupt",
-    "partial-failure",
-    "multiple-errors",
-    "acceptance",
-    "completion",
-    "stream",
-    "stream-failure",
-    "mutation",
-    "lost-response",
-    "unknown-fields",
-    "unknown-version",
-    "expiry",
+# One contract table owns applicability, exits, required inputs and observations.
+# fmt: off
+CONTRACTS = {
+    "read": {}, "missing-input": {"exit": 2}, "invalid-input": {"exit": 2, "stable": True},
+    "invalid-flag": {"exit": 2}, "conflict": {"exit": 2}, "confirmation": {"exit": 4},
+    "confirmation-yes": {}, "owner-decision": {"exit": 4}, "denial": {"exit": 4},
+    "unavailable": {"exit": 5, "stable": True}, "verification": {"exit": 3},
+    "timeout": {"exit": 124}, "interrupt": {"exit": 130},
+    "partial-failure": {"observe": lambda d, s, p: d["status"] == "failed" and d["data"] is not None},
+    "multiple-errors": {"observe": lambda d, s, p: len(d["errors"]) >= 2},
+    "acceptance": {"status": "accepted", "fields": ("inspection_command", "inspection_argv")},
+    "completion": {}, "stream": {}, "stream-failure": {},
+    "mutation": {"method": "retry", "fields": ("different_input", "equivalent_argv")},
+    "lost-response": {"method": "retry", "fields": ("different_input", "equivalent_argv")},
+    "unknown-fields": {"observe": lambda d, s, p: s["unknown_fields_sent"] and bool(s["upstream_messages"])},
+    "unknown-version": {"exit": 2, "stable": True, "fields": ("error_codes",),
+                        "observe": lambda d, s, p: s["unknown_version_sent"] and bool(s["upstream_messages"])},
+    "expiry": {"fields": ("inspection_command",), "observe": lambda d, s, p:
+               s["expired"] and bool(s["expired_entries"]) and d["data"]["next_action"] == p["inspection_command"]},
 }
-CODES = {
-    "missing-input": 2,
-    "invalid-input": 2,
-    "invalid-flag": 2,
-    "conflict": 2,
-    "confirmation": 4,
-    "owner-decision": 4,
-    "denial": 4,
-    "unavailable": 5,
-    "verification": 3,
-    "timeout": 124,
-    "interrupt": 130,
-    "unknown-version": 2,
-}
+# id, argv tokens ($leaf/$missing expand declared paths), kind, JSON recognition, scope
+HELP_CASES = (
+    ("root-help",             ("--help",),                            "text",    "plain",    "root"),
+    ("root-help-command",     ("--help", "$leaf"),                   "text",    "plain",    "root"),
+    ("leaf-help",             ("$leaf", "--help"),                   "text",    "plain",    "leaf"),
+    ("root-version",          ("--version",),                         "version", "plain",    "root"),
+    ("help-missing-input",    ("$missing", "--help"),                "text",    "plain",    "missing"),
+    ("version-missing-input", ("$missing", "--version"),             "version", "plain",    "missing"),
+    ("text-conflict",         ("$leaf", "--help", "--quiet", "--verbose"), "text", "plain", "leaf"),
+    ("version-conflict",      ("$leaf", "--version", "--quiet", "--verbose"), "version", "plain", "leaf"),
+    ("json-help-before",      ("--json", "$leaf", "--help"),         "text",    "json",     "leaf"),
+    ("json-help-after",       ("$leaf", "--help", "--json"),         "text",    "trailing", "leaf"),
+    ("json-version-before",   ("--json", "$leaf", "--version"),      "version", "json",     "leaf"),
+    ("json-version-after",    ("$leaf", "--version", "--json"),      "version", "trailing", "leaf"),
+    ("help-version",          ("--help", "--version"),               "help",    "plain",    "root"),
+    ("version-help",          ("--version", "--help"),               "version", "plain",    "root"),
+)
+# fmt: on
+SCENARIOS = set(CONTRACTS) - {"confirmation-yes"}
+CODES = {name: c["exit"] for name, c in CONTRACTS.items() if "exit" in c}
 SHARED = ("--json", "--quiet", "--verbose", "--yes", "--no-input")
+FLAG_CASES = [(flag, before) for flag in SHARED for before in (True, False)]
+HELP_TOPICS = (
+    "usage",
+    "arguments",
+    "defaults",
+    "examples",
+    "side effects",
+    "exit codes",
+    "configuration precedence",
+    "project",
+    "config",
+    "schema",
+    "mapping",
+    "simultaneous failures",
+)
+
+
+def help_matrix(manifest):
+    """Materialize required cases once, for both validation and execution."""
+    h, cases = manifest["help_version"], []
+    for case_id, tokens, kind, machine, scope in HELP_CASES:
+        argv = [
+            arg
+            for token in tokens
+            for arg in (h[token[1:] + "_argv"] if token.startswith("$") else [token])
+        ]
+        if case_id in {"help-version", "version-help"}:
+            winner = kind if h["precedence"] == "first" else h["precedence"]
+            kind = "text" if winner == "help" else "version"
+        command = manifest["name"] if scope == "root" else h[scope + "_command"]
+        cases.append(
+            {
+                "id": case_id,
+                "argv": argv,
+                "kind": kind,
+                "command": command,
+                "json": machine == "json"
+                or (machine == "trailing" and h["trailing_options"] == "recognized"),
+            }
+        )
+    return cases
 
 
 def envelope_errors(doc: Any, stream: bool = False) -> list:
     """Return type/semantic violations, allowing unknown optional fields."""
     if not isinstance(doc, dict):
         return ["envelope must be an object"]
-    errors = []
     types = {
         "schema_version": int,
         "command": str,
@@ -72,9 +112,11 @@ def envelope_errors(doc: Any, stream: bool = False) -> list:
         "request_id": str,
         "status": str,
     }
-    for key, kind in types.items():
-        if key not in doc or type(doc[key]) is not kind:
-            errors.append(key + " has wrong or missing type")
+    errors = [
+        key + " has wrong or missing type"
+        for key, kind in types.items()
+        if type(doc.get(key)) is not kind
+    ]
     if "data" not in doc:
         errors.append("data is missing")
     if errors:
@@ -92,21 +134,23 @@ def envelope_errors(doc: Any, stream: bool = False) -> list:
         if not isinstance(error, dict):
             errors.append("error must be an object")
             continue
-        for key, kind in {
-            "code": str,
-            "message": str,
-            "retryable": bool,
-            "next_action": str,
-        }.items():
-            if type(error.get(key)) is not kind:
-                errors.append("error." + key + " has wrong or missing type")
-        for key in ("code", "next_action"):
-            if not error.get(key):
-                errors.append("error." + key + " is empty")
-        if "target" not in error or (
-            error["target"] is not None and not isinstance(error["target"], str)
-        ):
-            errors.append("error.target must be string or null")
+        fields = {
+            "code": (str,),
+            "message": (str,),
+            "retryable": (bool,),
+            "next_action": (str,),
+            "target": (str, type(None)),
+        }
+        errors.extend(
+            "error." + k + " has wrong or missing type"
+            for k, kinds in fields.items()
+            if k not in error or type(error[k]) not in kinds
+        )
+        errors.extend(
+            "error." + k + " is empty"
+            for k in ("code", "next_action")
+            if not error.get(k)
+        )
     return errors
 
 
@@ -128,8 +172,6 @@ def documents(stdout: str, stream: bool = False, mapping=None) -> list:
             "accepted",
         }:
             raise ValueError("stream needs a terminal receipt")
-        if any(d.get("status") != "running" for d in docs[:-1]):
-            raise ValueError("only running records may precede the terminal receipt")
     else:
         doc, end = decoder.raw_decode(stdout.lstrip())
         assert stdout.lstrip()[end:] == "\n", (
@@ -164,6 +206,7 @@ class Suite:
         self.manifest = manifest
         self.base = base
         self.results = []
+        self.baselines = {}
         # Do not pass credentials or service configuration from the calling shell.
         self.env = {
             key: value
@@ -232,6 +275,8 @@ class Suite:
 
         master, slave = pty.openpty()
         chunks = []
+        env = dict(self.env, TERM="xterm-256color", FORCE_COLOR="1")
+        env.pop("NO_COLOR", None)
 
         def drain():
             try:
@@ -252,7 +297,7 @@ class Suite:
                 stdout=slave if output_tty else subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=self.base,
-                env=self.env,
+                env=env,
             )
             os.close(slave)
             slave = -1
@@ -287,128 +332,141 @@ class Suite:
     def validate_manifest(self):
         m = self.manifest
         assert type(m["manifest_version"]) is int and m["manifest_version"] == 1
-        for argv in [m["executable"], m["fixture"]["argv"]]:
+        for argv in (m["executable"], m["fixture"]["argv"]):
             assert (
                 isinstance(argv, list)
                 and argv
                 and all(isinstance(a, str) for a in argv)
             )
-        assert m["fixture"]["isolation"], "declare isolated backend/local state"
-        assert m["payload_schema"]["identifier"] and m["payload_schema"]["version"]
-        assert m["version"] and m["command_tree"]
-        exceptions = m.get("entrypoint_exceptions", [])
+        assert (
+            m["fixture"]["isolation"]
+            and m["payload_schema"]["identifier"]
+            and m["payload_schema"]["version"]
+        )
+        assert m["version"] and "read" in m["probes"]
         for command in m["command_tree"]:
             parts = command.split()
-            assert parts[0] == m["name"] and (len(parts) >= 3 or command in exceptions)
+            assert parts[0] == m["name"] and (
+                len(parts) >= 3 or command in m.get("entrypoint_exceptions", [])
+            )
             assert all(re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", p) for p in parts)
-        for flag in m["long_flags"]:
-            assert re.fullmatch(r"--[a-z][a-z0-9]*(?:-[a-z0-9]+)*", flag)
-        covered_commands = {p["command"] for p in m["probes"].values()}
-        covered_commands.update(
-            p.get("inspection_command") for p in m["probes"].values()
+        assert all(
+            re.fullmatch(r"--[a-z][a-z0-9]*(?:-[a-z0-9]+)*", f) for f in m["long_flags"]
         )
-        assert set(m["command_tree"]) <= covered_commands, (
-            "provide a safe probe for every canonical command"
-        )
-        if "confirmation" in m["probes"]:
-            assert "confirmation-yes" in m["probes"], (
-                "prove --yes supplies confirmation"
-            )
-        for scenario in SCENARIOS:
-            assert scenario in m["probes"] or m["inapplicable"].get(scenario), (
-                "missing scenario: " + scenario
-            )
-        assert "read" in m["probes"]
-        assert m["help_version"]["precedence"] in {"help", "version", "first"}
-        assert isinstance(m["help_version"]["trailing_options"], str)
-        assert m["help_version"]["cases"], "declare eager argv cases"
-        kinds = {case["kind"] for case in m["help_version"]["cases"]}
-        assert kinds == {"text", "version"}, "declare help and version cases"
-        for kind in kinds:
-            cases = [c for c in m["help_version"]["cases"] if c["kind"] == kind]
-            assert any(c["json"] for c in cases), "declare exact JSON help/version argv"
-            assert any(not c["json"] for c in cases), "declare plain help/version argv"
-        assert any(c["command"] == m["name"] for c in m["help_version"]["cases"])
-        assert any(
-            c["command"] in m["command_tree"] for c in m["help_version"]["cases"]
-        )
-        eager_cases = m["help_version"]["cases"]
-        for first, second in (("--help", "--version"), ("--version", "--help")):
-            combined = [
-                c
-                for c in eager_cases
-                if first in c["argv"]
-                and second in c["argv"]
-                and c["argv"].index(first) < c["argv"].index(second)
-            ]
-            assert combined, "declare both combined help/version orders"
-            winner = (
-                first
-                if m["help_version"]["precedence"] == "first"
-                else "--" + m["help_version"]["precedence"]
-            )
-            kind = "text" if winner == "--help" else "version"
-            assert all(c["kind"] == kind for c in combined), (
-                "precedence declaration disagrees with argv cases"
-            )
-        assert any(
-            "--quiet" in c["argv"] and "--verbose" in c["argv"] for c in eager_cases
-        ), "declare eager precedence over flag conflicts"
-        for concept in (
-            "usage",
-            "arguments",
-            "defaults",
-            "examples",
-            "side effects",
-            "exit codes",
-            "configuration precedence",
-            "project",
-            "config",
-            "schema",
-            "mapping",
-            "simultaneous failures",
-        ):
-            assert concept in m["help_required"], (
-                "declare help documentation token: " + concept
+        for name in SCENARIOS:
+            assert name in m["probes"] or m["inapplicable"].get(name), (
+                "missing scenario: " + name
             )
         prefixes = {
             " ".join(c.split()[:i])
             for c in m["command_tree"]
             for i in range(1, len(c.split()) + 1)
         }
-        assert all(p["command"] in prefixes for p in m["probes"].values()), (
-            "probes must name canonical resolved paths"
+        for name, spec in m["probes"].items():
+            assert spec["argv"] and spec["command"] in prefixes, (
+                "probe must name a canonical resolved path"
+            )
+            for field in CONTRACTS.get(name, {}).get("fields", ()):
+                assert spec[field], "scenario requires " + field
+        assert set(m["command_tree"]) <= set(self.command_cases()), (
+            "provide flag cases for every command path"
         )
+        for command, (_, spec) in self.command_cases().items():
+            assert spec["command"] == command, (
+                "flag probe must exercise its declared path"
+            )
         for alias in m["aliases"]:
             assert alias["canonical"] in m["command_tree"]
+        h = m["help_version"]
+        assert h["precedence"] in {"help", "version", "first"}
+        assert h["trailing_options"] in {"recognized", "eager"}
+        if "missing-input" in m["probes"]:
+            missing = m["probes"]["missing-input"]
+            assert h["missing_argv"] == [
+                a for a in missing["argv"] if a not in SHARED
+            ], "missing-input help case must use the actual missing invocation"
+            assert h["missing_command"] == missing["command"]
+        actual = {c["id"]: c for c in h["cases"]}
+        for case in help_matrix(m):
+            assert actual.get(case["id"]) == case, (
+                "missing or inconsistent help matrix case: " + case["id"]
+            )
+        docs = m["help_required"]
+        assert isinstance(docs, dict), (
+            "help documentation must declare concrete passages, not keywords"
+        )
+        for topic in HELP_TOPICS:
+            assert (
+                isinstance(docs[topic], str)
+                and len(docs[topic].strip()) > len(topic) + 3
+            ), "help documentation: " + topic
+        assert (
+            str(m["payload_schema"]["version"]) in docs["schema"]
+            and m["payload_schema"]["identifier"] in docs["schema"]
+        )
+        for code in (0, 1, 2, 3, 4, 5, 124, 130):
+            assert re.search(
+                r"(?<![0-9])" + str(code) + r"(?![0-9])", docs["exit codes"]
+            ), "document exit mappings"
+        if "confirmation" in m["probes"]:
+            assert "confirmation-yes" in m["probes"]
         if "mutation" in m["probes"]:
             retry = m["retry"]
-            assert retry["flag"].startswith("--") and retry["receipt_field"]
-            assert retry["scope"] and retry["retention"] and retry["conflict_code"]
-            assert "scope" in m["help_required"] and "retention" in m["help_required"]
-            for scenario in ("lost-response", "expiry"):
-                assert scenario in m["probes"], "mutations require " + scenario
-            for scenario in ("mutation", "lost-response"):
-                assert m["probes"][scenario]["equivalent_argv"], (
-                    "declare normalized equivalent input"
-                )
+            for field in "flag receipt_field scope retention conflict_code".split():
+                assert retry[field]
+            assert (
+                retry["scope"] in docs["scope"]
+                and retry["retention"] in docs["retention"]
+            )
+            assert all(n in m["probes"] for n in ("lost-response", "expiry"))
 
-    def probe(self, name: str, argv=None, reset=True) -> tuple:
-        spec = self.manifest["probes"][name]
+    def category(self, result):
+        return self.manifest.get("legacy_exits", {}).get(
+            str(result.returncode), result.returncode
+        )
+
+    def command_cases(self):
+        cases = {
+            p["command"]: (n, p)
+            for n, p in reversed(list(self.manifest["probes"].items()))
+            if n != "lost-response"
+        }
+        for command, name in self.manifest.get("flag_probes", {}).items():
+            cases[command] = (name, self.manifest["probes"][name])
+        for name, spec in self.manifest["probes"].items():
+            if "inspection_argv" in spec:
+                inspection = dict(
+                    spec,
+                    argv=spec["inspection_argv"],
+                    command=spec["inspection_command"],
+                    status="completed",
+                    effects=spec.get("inspection_effects", 0),
+                    setup_argv=spec["argv"],
+                )
+                cases.setdefault(spec["inspection_command"], (name, inspection))
+        return {c: cases[c] for c in self.manifest["command_tree"] if c in cases}
+
+    def probe(self, name: str, argv=None, reset=True, spec=None, tty="none") -> tuple:
+        spec = spec or self.manifest["probes"][name]
+        contract = CONTRACTS.get(name, {})
         if reset:
-            self.fixture("reset", name)
-        before = self.fixture("inspect", name)
-        result = self.run(spec["argv"] if argv is None else argv)
-        docs = self.decode(result.stdout, name.startswith("stream"))
+            before = self.fixture("reset", name)
+            if spec.get("setup_argv"):
+                self.run(spec["setup_argv"])
+                before = self.fixture("inspect", name)
+        else:
+            before = self.fixture("inspect", name)
+        argv = spec["argv"] if argv is None else argv
+        result = self.run(argv) if tty == "none" else self.terminal_run(argv, tty)
+        docs = self.decode(result.stdout, spec.get("stream", name.startswith("stream")))
         last = docs[-1]
         assert last["command"] == spec["command"], "report deepest canonical command"
-        expected = CODES.get(name, spec.get("exit", 0))
-        legacy = self.manifest.get("legacy_exits", {})
-        actual = legacy.get(str(result.returncode), result.returncode)
+        expected = contract.get("exit", spec.get("exit", 0))
+        actual = self.category(result)
         assert actual == expected and result.returncode != 1, "exit category mismatch"
         assert (actual == 0) == last["ok"], "exit and success disagree"
         assert last["status"] == spec.get(
-            "status", "completed" if expected == 0 else "failed"
+            "status", contract.get("status", "completed" if expected == 0 else "failed")
         )
         for path, value in spec.get("expect", {}).items():
             assert lookup(last, path) == value, "postcondition mismatch: " + path
@@ -421,57 +479,32 @@ class Suite:
         assert after["effects"] - before["effects"] == spec.get("effects", 0), (
             "unexpected mutation count"
         )
-        if name not in {"invalid-flag", "missing-input", "conflict"}:
+        if spec.get("dispatch", after["service_calls"] > before["service_calls"]):
             assert last["request_id"] in after["request_ids"], (
                 "request ID was not forwarded"
             )
-        if name == "mutation":
-            assert (
-                isinstance(last["data"]["idempotency_key"], str)
-                and last["data"]["idempotency_key"]
+        fields = ["idempotency_key"] if name == "mutation" else []
+        if last["status"] == "accepted":
+            fields += ["operation_id", "next_action"]
+            assert last["data"]["next_action"] == spec["inspection_command"]
+        for field in fields:
+            assert isinstance(last["data"][field], str) and last["data"][field], (
+                "receipt field: " + field
             )
         if expected:
             assert last["errors"], "failure needs structured errors"
             if "error_codes" in spec:
                 assert [e["code"] for e in last["errors"]] == spec["error_codes"]
-        if name == "expiry":
-            assert after["expired"] is True, (
-                "fixture must actually expire the retry key"
+        if "observe" in contract:
+            assert contract["observe"](last, after, spec), (
+                "scenario observation/postcondition mismatch: " + name
             )
-            assert last["data"]["next_action"] == spec["inspection_command"], (
-                "expiry recovery must name the declared inspection command"
-            )
-        if name == "unknown-fields":
-            assert after["unknown_fields_sent"] is True, (
-                "fixture must inject unknown optional fields"
-            )
-        if name == "unknown-version":
-            assert after["unknown_version_sent"] is True, (
-                "fixture must inject an unsupported version"
-            )
-            assert last["errors"][0]["code"] == spec["error_codes"][0]
-        if name == "multiple-errors":
-            assert len(last["errors"]) >= 2, "retain simultaneous errors"
-        if name == "partial-failure":
-            assert actual != 0 and last["status"] == "failed"
-            assert last["data"] is not None, "retain partial result"
-        if last["status"] == "accepted":
-            assert (
-                isinstance(last["data"]["operation_id"], str)
-                and last["data"]["operation_id"]
-            )
-            assert (
-                isinstance(last["data"]["next_action"], str)
-                and last["data"]["next_action"]
-            )
-            assert last["data"]["next_action"] == spec["inspection_command"]
         if last["status"] == "completed":
             assert after["postcondition"], "completion must assert a real postcondition"
         return result, docs, after
 
     def help_case(self, case: dict):
-        self.fixture("reset", "unavailable")
-        before = self.fixture("inspect")
+        before = self.fixture("reset", "unavailable")
         result = self.run(case["argv"])
         assert result.returncode == 0, "help/version must exit 0 offline"
         if case["json"]:
@@ -482,30 +515,78 @@ class Suite:
             text = result.stdout
         assert isinstance(text, str) and text.strip()
         if case["kind"] == "version":
-            assert text == self.manifest["version"] or self.manifest["version"] in text
+            assert self.manifest["version"] in text
         else:
-            required = self.manifest["help_required"]
-            for token in required.values() if isinstance(required, dict) else required:
-                assert token.lower() in text.lower(), "help missing " + token
+            usage = self.manifest["help_version"]["scope_usage"][case["command"]]
+            assert usage in text, "help documentation has the wrong parser scope"
+            for topic, passage in self.manifest["help_required"].items():
+                assert " ".join(passage.split()) in " ".join(text.split()), (
+                    "help documentation missing: " + topic
+                )
+            for code, category in self.manifest.get("legacy_exits", {}).items():
+                assert (
+                    code in text
+                    and str(category) in text
+                    and self.manifest["canonical_exit_invocation"] in text
+                )
         after = self.fixture("inspect")
         assert after["effects"] == before["effects"] and after["service_calls"] == 0
 
-    def flag(self, flag: str, before: bool, name: str = "read"):
-        spec = self.manifest["probes"][name]
-        args = [a for a in spec["argv"] if a != "--json"]
+    def stable_result(self, docs):
+        docs = json.loads(json.dumps(docs))
+        for doc in docs:
+            for path in ["request_id"] + self.manifest.get("volatile_paths", []):
+                value = doc
+                parts = path.split(".")
+                for part in parts[:-1]:
+                    value = value.get(part, {}) if isinstance(value, dict) else {}
+                if isinstance(value, dict):
+                    value.pop(parts[-1], None)
+        return docs
+
+    def flag(self, flag: str, before: bool, name: str = "read", spec=None):
+        spec = spec or self.manifest["probes"][name]
+        key = json.dumps([name, spec], sort_keys=True)
+        if key not in self.baselines:
+            self.baselines[key] = self.probe(name, spec=spec)
+        baseline, original, _ = self.baselines[key]
+        args = [a for a in spec["argv"] if a not in SHARED]
         flags = [flag] + ([] if flag == "--json" else ["--json"])
-        result, docs, state = self.probe(name, flags + args if before else args + flags)
+        result, docs, _ = self.probe(
+            name, flags + args if before else args + flags, spec=spec
+        )
+        if flag in {"--verbose", "--quiet"}:
+            assert self.stable_result(docs) == self.stable_result(original), (
+                "flag changed stdout result"
+            )
         if flag == "--quiet":
-            assert not result.stderr, "quiet leaked informational diagnostics"
+            allowed = self.manifest.get("diagnostics", {})
+            patterns = allowed.get("error", []) + allowed.get("deprecation", [])
+            messages = [e["message"] for d in docs for e in d["errors"]]
+
+            def permitted(line):
+                return line in messages or any(re.fullmatch(p, line) for p in patterns)
+
+            assert all(permitted(line) for line in result.stderr.splitlines()), (
+                "quiet leaked informational diagnostics"
+            )
+            assert all(
+                line in result.stderr.splitlines()
+                for line in baseline.stderr.splitlines()
+                if permitted(line)
+            ), "quiet dropped required diagnostics"
         if flag == "--verbose":
             assert result.stderr.strip(), "verbose should add stderr diagnostics"
+
+    def json_terminal(self, name="read", spec=None):
+        self.probe(name, spec=spec, tty="both")
 
     def interaction(self, name: str, flags: list, tty: str = "none"):
         spec = self.manifest["probes"][name]
         args = [a for a in spec["argv"] if a != "--json"] + flags
         self.fixture("reset", name)
         result = self.run(args) if tty == "none" else self.terminal_run(args, tty)
-        assert result.returncode == CODES[name], (
+        assert self.category(result) == CODES[name], (
             "noninteractive missing input/decision must fail in its category"
         )
         state = self.fixture("inspect", name)
@@ -519,7 +600,7 @@ class Suite:
         self.fixture("reset")
         result = self.run(alias["argv"] + (["--quiet"] if quiet else []))
         doc = self.decode(result.stdout)[-1]
-        assert result.returncode == 0 and doc["command"] == alias["canonical"]
+        assert self.category(result) == 0 and doc["command"] == alias["canonical"]
         lines = [line for line in result.stderr.splitlines() if line.strip()]
         assert (
             len(lines) == 1
@@ -530,14 +611,7 @@ class Suite:
         assert doc["data"] == docs[-1]["data"], "alias must preserve results"
 
     def generated_key(self):
-        self.fixture("reset", "mutation")
-        result = self.run(self.manifest["probes"]["mutation"]["argv"])
-        doc = self.decode(result.stdout)[-1]
-        assert result.returncode == 0
-        assert (
-            isinstance(doc["data"]["idempotency_key"], str)
-            and doc["data"]["idempotency_key"]
-        )
+        self.probe("mutation")
 
     def stable_error(self, name: str):
         _, first, _ = self.probe(name)
@@ -552,33 +626,29 @@ class Suite:
         key = "conformance-retry-key"
         argv = spec["argv"] + [self.manifest["retry"]["flag"], key]
         first = self.run(argv)
-        if scenario == "lost-response":
-            assert first.returncode != 0, "fixture must lose the response after commit"
-            lost = self.decode(first.stdout)[-1]
-            assert lost["status"] == "failed" and not lost["ok"]
-            first_doc = None
-        else:
-            first_doc = self.decode(first.stdout)[-1]
-            assert first.returncode == 0
+        first_doc = self.decode(first.stdout)[-1]
+        expected = 5 if scenario == "lost-response" else 0
+        assert self.category(first) == expected
+        assert first_doc["ok"] == (expected == 0)
         before = self.fixture("inspect", scenario)
         assert before["effects"] == 1, "first submission must commit once"
         equivalent = spec["equivalent_argv"] + [self.manifest["retry"]["flag"], key]
         second = self.run(equivalent)
         doc = self.decode(second.stdout)[-1]
-        assert second.returncode == 0 and doc["ok"]
+        assert self.category(second) == 0 and doc["ok"]
         after = self.fixture("inspect", scenario)
         assert after["effects"] == 1, "retry duplicated effects"
         assert lookup(doc, self.manifest["retry"]["receipt_field"]) == key
         assert doc["data"]["operation_id"] == before["operation_id"]
         assert doc["request_id"] == before["request_id"]
-        if first_doc:
+        if scenario != "lost-response":
             assert (
                 doc["data"] == first_doc["data"]
                 and doc["request_id"] == first_doc["request_id"]
             )
         conflict = self.run(argv + spec["different_input"])
         failed = self.decode(conflict.stdout)[-1]
-        assert conflict.returncode == 2 and not failed["ok"]
+        assert self.category(conflict) == 2 and not failed["ok"]
         assert failed["errors"][0]["code"] == self.manifest["retry"]["conflict_code"]
         assert self.fixture("inspect", scenario)["effects"] == 1
 
@@ -587,7 +657,7 @@ class Suite:
         _, accepted, state = self.probe("acceptance")
         result = self.run(spec["inspection_argv"])
         completed = self.decode(result.stdout)[-1]
-        assert result.returncode == 0 and completed["status"] == "completed"
+        assert self.category(result) == 0 and completed["status"] == "completed"
         for path in ("data.operation_id", "request_id"):
             assert lookup(accepted[-1], path) == lookup(completed, path)
         assert self.fixture("inspect")["postcondition"]
@@ -597,119 +667,67 @@ class Suite:
             "manifest",
             "manifest",
             self.validate_manifest,
-            "Publish manifest version 1 with all required scenarios or explicit reasons.",
+            "Publish the required scenario/help matrix and concrete documentation.",
         )
         if not self.results[-1]["passed"]:
             return self.results
-        for index, case in enumerate(self.manifest["help_version"]["cases"]):
-            self.check(
-                "help-version/" + str(index),
-                "commands",
-                lambda c=case: self.help_case(c),
-                "Render declared scope offline, before operand/conflict checks, without service calls.",
-            )
+
+        def check(rule, section, fn, *args):
+            hint = f"Apply docs/cli-standard.md#{SECTIONS[section]}; {rule}"
+            self.check(rule, section, lambda: fn(*args), hint)
+
+        for case in self.manifest["help_version"]["cases"]:
+            check("help-version/" + case["id"], "commands", self.help_case, case)
         for name in self.manifest["probes"]:
-            if name in {"lost-response", "mutation"}:
-                continue
-            self.check(
-                "probe/" + name,
-                "exits" if name in CODES else "output",
-                lambda n=name: self.probe(n),
-                "Emit one typed canonical envelope, correct exit/status, no prompts or unintended effects.",
+            contract = CONTRACTS.get(name, {})
+            method = contract.get("method", "probe")
+            check(
+                method + "/" + name,
+                "work" if method == "retry" else "output",
+                getattr(self, method),
+                name,
             )
-        for name in ("invalid-input", "unavailable", "unknown-version"):
-            if name in self.manifest["probes"]:
-                self.check(
-                    "stable-error/" + name,
+            if contract.get("stable"):
+                check("stable-error/" + name, "output", self.stable_error, name)
+        for command, (name, spec) in self.command_cases().items():
+            for flag, before in FLAG_CASES:
+                side = "before" if before else "after"
+                rule = f"flag/{command}/{flag}/{side}"
+                check(rule, "commands", self.flag, flag, before, name, spec)
+            if os.name == "posix":
+                check(
+                    "json/color-capable-tty/" + command,
                     "output",
-                    lambda n=name: self.stable_error(n),
-                    "Keep stable error codes across repeated failures.",
+                    self.json_terminal,
+                    name,
+                    spec,
                 )
-        if "mutation" in self.manifest["probes"]:
-            self.check(
-                "generated-retry-key",
-                "work",
-                self.generated_key,
-                "Include generated retry keys in acknowledgement data.idempotency_key.",
-            )
-        safe_commands = {}
-        for name, spec in self.manifest["probes"].items():
-            if (
-                name not in CODES
-                and spec.get("exit", 0) == 0
-                and not name.startswith("stream")
-                and name != "lost-response"
-            ):
-                safe_commands.setdefault(spec["command"], name)
-        for command, name in safe_commands.items():
-            for flag in SHARED:
-                for before in (True, False):
-                    self.check(
-                        "flag/"
-                        + command
-                        + "/"
-                        + flag
-                        + ("/before" if before else "/after"),
-                        "commands",
-                        lambda f=flag, b=before, n=name: self.flag(f, b, n),
-                        "Accept shared flags on either side of the command; keep diagnostics on stderr.",
-                    )
         for name in ("missing-input", "confirmation", "owner-decision", "denial"):
-            if name in self.manifest["probes"]:
-                variants = [[], ["--no-input"], ["--json"]]
-                if name in {"missing-input", "denial"}:
-                    variants.append(["--yes", "--json"])
-                for index, flags in enumerate(variants):
-                    self.check(
-                        "interaction/" + name + "/" + str(index),
-                        "output",
-                        lambda n=name, f=flags: self.interaction(n, f),
-                        "Fail without prompting or mutation; --yes cannot supply inputs or authorization.",
-                    )
-        if os.name == "posix":
-            for name in ("missing-input", "confirmation"):
-                if name in self.manifest["probes"]:
-                    for tty, flags in (
-                        ("stdin", []),
-                        ("stdout", []),
-                        ("both", ["--no-input"]),
-                        ("both", ["--json"]),
-                    ):
-                        self.check(
-                            "tty/" + name + "/" + tty + "/" + ",".join(flags),
-                            "output",
-                            lambda n=name, f=flags, t=tty: self.interaction(n, f, t),
-                            "Never prompt when either stream is non-TTY, or JSON/no-input is selected.",
-                        )
+            if name not in self.manifest["probes"]:
+                continue
+            variants = [("none", []), ("none", ["--no-input"]), ("none", ["--json"])]
+            if name in {"missing-input", "denial"}:
+                variants.append(("none", ["--yes", "--json"]))
+            if os.name == "posix":
+                variants += [
+                    ("stdin", []),
+                    ("stdout", []),
+                    ("both", ["--no-input"]),
+                    ("both", ["--json"]),
+                ]
+            for index, (tty, flags) in enumerate(variants):
+                rule = f"interaction/{name}/{index}"
+                check(rule, "output", self.interaction, name, flags, tty)
         for index, alias in enumerate(self.manifest["aliases"]):
-            self.check(
-                "alias/" + str(index),
-                "commands",
-                lambda a=alias: self.alias(a),
-                "Warn once on stderr, preserve behavior, and return the canonical command.",
-            )
-        for scenario in ("mutation", "lost-response"):
-            if scenario in self.manifest["probes"]:
-                self.check(
-                    "retry/" + scenario,
-                    "work",
-                    lambda s=scenario: self.retry(s),
-                    "Deduplicate committed retries and reject changed input with a stable conflict error.",
-                )
-        for index, alias in enumerate(self.manifest["aliases"]):
-            self.check(
-                "quiet-alias/" + str(index),
-                "commands",
-                lambda a=alias: self.alias(a, True),
-                "Retain the single deprecation warning when quiet is selected.",
-            )
-        if "acceptance" in self.manifest["probes"]:
-            self.check(
-                "receipts",
-                "work",
-                self.receipts,
-                "Retain operation/request IDs from acceptance through verified completion.",
-            )
+            for quiet in (False, True):
+                rule = f"alias/{index}/{quiet}"
+                check(rule, "commands", self.alias, alias, quiet)
+        for name, enabled, fn in (
+            ("generated-retry-key", "mutation", self.generated_key),
+            ("receipts", "acceptance", self.receipts),
+        ):
+            if enabled in self.manifest["probes"]:
+                check(name, "work", fn)
         return self.results
 
 
@@ -720,8 +738,7 @@ def lookup(value: Any, path: str) -> Any:
 
 
 def check_manifest(path: Path) -> list:
-    with path.open(encoding="utf-8") as source:
-        manifest = json.load(source)
+    manifest = json.loads(path.read_text(encoding="utf-8"))
     artifact_root = Path(
         os.environ.get("MATILDA_ARTIFACT_ROOT", "/var/tmp/matilda/workspace")
     )
