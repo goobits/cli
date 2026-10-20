@@ -725,7 +725,7 @@ def lookup(value: Any, path: str) -> Any:
 
 def check_manifest(path: Path) -> list:
     manifest = json.loads(path.read_text(encoding="utf-8"))
-    root = Path(os.environ.get("MATILDA_ARTIFACT_ROOT", "/var/tmp/matilda/workspace"))
+    root = Path(os.environ.get("MATILDA_ARTIFACT_ROOT", tempfile.gettempdir()))
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="goobits-conformance-", dir=root) as state:
         return Suite(manifest, path.resolve().parent, state).execute()

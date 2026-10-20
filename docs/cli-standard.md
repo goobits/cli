@@ -191,7 +191,8 @@ example's executable and fixture declarations (paths resolve from the manifest):
 
 Exit 0 means all checks passed; exit 3 reports failed rules, section links and fix hints.
 Only run trusted manifests: both argv arrays execute subprocesses. The suite supplies a
-private `GOOBITS_CONFORMANCE_STATE`, HOME and TMPDIR, strips inherited credentials, and
+private `GOOBITS_CONFORMANCE_STATE`, HOME and TMPDIR in the system temporary directory
+(or `MATILDA_ARTIFACT_ROOT` when set), strips inherited credentials, and
 applies `fixture.env` to the target and hook. The hook receives one stdin JSON request
 `{"action":"reset","scenario":"read"}` or `{"action":"inspect","scenario":"read"}`
 and returns an observation object. Reset configures the isolated scenario; inspection
@@ -236,7 +237,9 @@ records allowed by the standard and requires a final terminal receipt.
 
 Native [Rust](../src/tests/fixtures/conformance/pilots/rust.manifest.json) and
 [TypeScript](../src/tests/fixtures/conformance/pilots/typescript.manifest.json) pilots
-exercise distinct native eager parsers, mapped envelopes and legacy exits. Build their
+exercise distinct native eager parsers, mapped envelopes and legacy exits. The Python
+test suite runs portable equivalents of both contracts without external toolchains.
+To exercise the native sources, install Rust or TypeScript/Node separately. Build their
 executables outside the checkout before running their manifests:
 
 ```sh

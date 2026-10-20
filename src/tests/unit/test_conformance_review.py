@@ -301,50 +301,26 @@ def test_color_defect_cannot_hide_behind_no_color_environment(tmp_path):
     assert not suite.results[0]["passed"]
 
 
-@pytest.mark.heavy
 @pytest.mark.parametrize("language", ["rust", "typescript"])
-def test_native_pilot_manifest(tmp_path, language):
+def test_pilot_manifest_without_native_toolchain(tmp_path, language, monkeypatch):
     import shutil
-    import subprocess
+    import sys
 
     from goobits_cli.conformance.suite import check_manifest
 
     from .test_conformance import FIXTURES, write_manifest
 
+    # Both native parsing policies run under the declared Python dependency.
+    # Child processes use only copied assets and their private state directory.
     pilots = FIXTURES / "pilots"
-    compiler = "rustc" if language == "rust" else "tsc"
-    assert shutil.which(compiler), compiler + " is required for the native pilot"
-    if language == "rust":
-        output = tmp_path / "rust-pilot"
-        subprocess.run(
-            [compiler, str(pilots / "rust.rs"), "-o", str(output)],
-            check=True,
-            timeout=60,
-            capture_output=True,
-        )
-        executable = [str(output)]
-    else:
-        subprocess.run(
-            [
-                compiler,
-                str(pilots / "typescript.ts"),
-                "--target",
-                "es2020",
-                "--outDir",
-                str(tmp_path),
-            ],
-            check=True,
-            timeout=60,
-            capture_output=True,
-        )
-        executable = ["node", str(tmp_path / "typescript.js")]
+    for name in ("portable.py", "fixture.py", "help.txt"):
+        shutil.copyfile(pilots / name, tmp_path / name)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.delenv("MATILDA_ARTIFACT_ROOT", raising=False)
     value = json.loads((pilots / (language + ".manifest.json")).read_text())
-    value["executable"] = executable
-    value["fixture"]["argv"] = [
-        __import__("sys").executable,
-        str(pilots / "fixture.py"),
-    ]
-    value["fixture"]["env"]["PILOT_HELP"] = str(pilots / "help.txt")
+    value["executable"] = [sys.executable, str(tmp_path / "portable.py"), language]
+    value["fixture"]["argv"] = [sys.executable, str(tmp_path / "fixture.py")]
+    value["fixture"]["env"]["PILOT_HELP"] = str(tmp_path / "help.txt")
     results = check_manifest(write_manifest(tmp_path, value))
     assert all(c["passed"] for c in results), [c for c in results if not c["passed"]]
 
@@ -420,11 +396,10 @@ def test_manifest_rejects_reserved_exit_mapping(tmp_path):
 
 
 def test_schema_rejects_reserved_exit_mapping():
+    import jsonschema
+
     from .test_conformance import FIXTURES
 
-    jsonschema = pytest.importorskip(
-        "jsonschema", reason="optional manifest authoring validator"
-    )
     schema = json.loads(
         (FIXTURES.parents[3] / "docs/conformance-manifest.schema.json").read_text()
     )
@@ -439,11 +414,10 @@ def test_schema_rejects_reserved_exit_mapping():
     "missing", ["retry", "confirmation-yes", "canonical_exit_invocation"]
 )
 def test_schema_requires_conditional_declarations(missing):
+    import jsonschema
+
     from .test_conformance import FIXTURES
 
-    jsonschema = pytest.importorskip(
-        "jsonschema", reason="optional manifest authoring validator"
-    )
     schema = json.loads(
         (FIXTURES.parents[3] / "docs/conformance-manifest.schema.json").read_text()
     )
@@ -478,11 +452,10 @@ def test_flag_selection_replaces_competing_diagnostic_mode(
     ],
 )
 def test_published_manifests_validate_against_schema(relative):
+    import jsonschema
+
     from .test_conformance import FIXTURES
 
-    jsonschema = pytest.importorskip(
-        "jsonschema", reason="optional manifest authoring validator"
-    )
     root = FIXTURES.parents[3]
     schema = json.loads((root / "docs/conformance-manifest.schema.json").read_text())
     jsonschema.Draft202012Validator.check_schema(schema)

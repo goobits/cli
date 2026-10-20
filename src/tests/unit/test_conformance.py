@@ -266,3 +266,26 @@ def test_installed_entrypoint_machine_contract(argv, expected):
     assert result.returncode == expected, result.stderr
     doc = documents(result.stdout)[0]
     assert doc["command"] == "goobits conformance check"
+
+
+@pytest.mark.parametrize("explicit_root", [False, True])
+def test_state_uses_writable_temporary_directory(tmp_path, monkeypatch, explicit_root):
+    """An empty environment must not require a writable host artifact directory."""
+    import tempfile
+
+    from goobits_cli.conformance import suite
+
+    monkeypatch.delenv("MATILDA_ARTIFACT_ROOT", raising=False)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    root = tmp_path / "artifacts" if explicit_root else tmp_path
+    if explicit_root:
+        monkeypatch.setenv("MATILDA_ARTIFACT_ROOT", str(root))
+    original = tempfile.TemporaryDirectory
+
+    def temporary_directory(*args, **kwargs):
+        assert Path(kwargs["dir"]) == root
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", temporary_directory)
+    monkeypatch.setattr(suite.Suite, "execute", lambda self: [])
+    assert check_manifest(write_manifest(tmp_path, manifest())) == []
