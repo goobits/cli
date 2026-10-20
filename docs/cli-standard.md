@@ -1,19 +1,17 @@
 # Goobits CLI standard
 
-Goobits CLI owns this standard and conformance; each tool owns its commands,
-payload schemas, and native parser. Generation and shared libraries are optional.
-“MUST” requirements are conformance assertions, including on failure paths.
+Goobits CLI owns conformance; tools own commands, schemas, and native parsers.
+Generation is optional. “MUST” requirements are subprocess assertions, including failures.
 
 ## Commands and flags
 
 - Commands MUST use `tool noun verb`; command names and long flags MUST use
   kebab-case. Top-level `guide`, help, version, and established domain entrypoints
   are allowed exceptions. Tools MUST document their canonical command tree.
-- Old executable, command, and flag spellings MUST remain deprecated aliases with
-  identical behavior. Using any deprecated spelling MUST emit one warning on
-  stderr per process, naming the replacements used; repeated uses MUST NOT emit
-  more warnings. Aliases MUST report the canonical command in JSON.
-- Every command MUST accept the shared flags before or after the command path:
+- Old spellings MUST remain equivalent deprecated aliases, emitting exactly one
+  stderr warning per process naming replacements. JSON MUST report canonical commands.
+- Every command MUST accept shared flags before or after its path, except the
+  help/version placement and precedence declared below:
 
 | Flag | Required behavior |
 | --- | --- |
@@ -25,36 +23,39 @@ payload schemas, and native parser. Generation and shared libraries are optional
 | `--yes` | Answer confirmation questions affirmatively; never supply missing inputs or bypass authorization. |
 | `--no-input` | Disable all prompts. |
 
-`--quiet` and `--verbose` together MUST fail as usage (exit 2). Help/version
-MUST honor `--json`: put help text or CLI version in `data` using the same envelope.
-Tools MUST document configuration selection and precedence, including explicit
-project/config options where supported.
+Help/version target the parser scope where encountered: `tool --help noun verb`
+describes the root; `tool noun verb --help` describes the leaf. Version identifies the
+executable. The manifest MUST declare native eager precedence for combined help/version,
+trailing-option handling, and exact JSON help/version invocations. When JSON is
+recognized before rendering, help/version MUST put text/version in envelope `data`.
+Recognized help/version MUST exit 0 ahead of missing operands and `--quiet --verbose`
+conflicts; otherwise that conflict MUST exit 2. Help MUST document configuration
+precedence and supported project/config options.
 
 ## Interaction and output
 
-A command MUST NOT prompt when stdin or stdout is not a TTY, or when `--json`
-or `--no-input` is set. Missing required arguments MUST fail with exit 2;
-required confirmation or an owner decision without `--yes` MUST fail with exit 4.
-Neither case may perform the pending mutation.
+A command MUST NOT prompt when stdin or stdout is not a TTY, or when `--json` or `--no-input` is set. Missing required arguments MUST fail with exit 2; required confirmation
+or an owner decision without `--yes` MUST fail with exit 4. Neither case may perform the
+pending mutation.
 
 With `--json`, stdout MUST contain exactly one UTF-8 JSON document followed by a
-newline, including for parser, validation, and service failures. Diagnostics,
-progress, and deprecation warnings MUST go to stderr. Human wording is not an API.
-Explicitly documented streaming commands MUST instead emit JSONL: one complete
-versioned envelope per line, no banners or multiline records, followed by one
-terminal receipt when the stream ends normally or with a handled failure.
-An abruptly killed process cannot promise a terminal document.
+newline, including for parser, validation, and service failures. Diagnostics, progress,
+and deprecation warnings MUST go to stderr. Human wording is not an API. Explicitly
+documented streaming commands MUST instead emit JSONL: one complete versioned envelope
+per line, no banners or multiline records, followed by one terminal receipt when the
+stream ends normally or with a handled failure. Unhandled crashes and abrupt termination
+cannot promise a terminal document.
 
-The default envelope extends vm's `presentation.rs`. All fields below are
-required; nullable fields MUST be present as `null` when unavailable.
+The envelope extends vm repository `rust/vm/src/presentation.rs` to reuse its base.
+Fields MUST be present; unavailable nullable values MUST be `null`.
 
 | Field | JSON type | Meaning |
 | --- | --- | --- |
 | `schema_version` | positive integer | Envelope contract version; initially `1`. |
 | `command` | string | Canonical command path, e.g. `butter task list`; use the deepest resolved canonical path for parse failures. |
-| `ok` | boolean | True exactly when `errors` is empty; acceptance alone does not mean work completed. |
+| `ok` | boolean | True exactly when `errors` is empty. |
 | `data` | any JSON value or null | Tool-owned payload, partial result, or null when no result exists. |
-| `errors` | array of error objects | Empty on success; nonempty on failure, including partial failure. |
+| `errors` | array of error objects | Empty on success; nonempty on failure. |
 | `request_id` | nonempty string | Correlation ID generated locally before dispatch, retained in downstream requests and receipts. |
 | `status` | string enum | `accepted`, `completed`, or `failed`; streams may additionally use `running`. |
 
@@ -63,39 +64,43 @@ required; nullable fields MUST be present as `null` when unavailable.
 results in `data`, and exit nonzero. A locally generated request ID MUST remain
 available even if a service cannot be reached.
 
-Each error object MUST have exactly these required fields (additional documented
-fields are allowed):
+Each error object MUST have exactly these required fields (additional documented fields
+are allowed):
 
 | Field | JSON type | Meaning |
 | --- | --- | --- |
-| `code` | nonempty string | Stable, tool-owned machine identifier; never derive it from human wording. |
-| `message` | string | Human explanation; consumers MUST NOT branch on this text. |
+| `code` | nonempty string | Tool-owned identifier, stable across message wording changes for the same failure. |
+| `message` | string | Human explanation; not a machine discriminator. |
 | `retryable` | boolean | Whether retrying the same operation after a transient condition can succeed safely using its idempotency key. |
-| `next_action` | nonempty string | Concrete recovery, inspection, or escalation instruction; state when no automatic retry is safe. |
+| `next_action` | nonempty string | Recovery instruction, including when retry is unsafe. |
 | `target` | string or null | Affected resource identifier or input path, if known. |
 
-A tool's existing envelope qualifies without wrapping or renaming fields if it
-is versioned, carries stable error codes, and its published schema maps every
-meaning above, including retryability, recovery, request identity, and work
-status. Its help MUST identify that schema and mapping. An unversioned bare
-payload does not qualify.
+Existing versioned envelopes with stable error codes qualify through documented semantic
+mappings, preserving domain contracts. Help MUST identify a schema and mapping covering
+every meaning above.
 
 ## Exit codes
 
-Every command MUST document and use this table. For simultaneous failures, use
-one exit category and preserve every error in `errors`; the documented command
-contract MUST specify the category selection. Acceptance exits 0 only for commands
-whose documented outcome is submission; waiting commands exit 0 only on completion.
+Help MUST document exit mappings and simultaneous-failure category selection; JSON MUST
+preserve all errors. Submission commands may exit 0 on acceptance; waiting commands MUST
+exit 0 only on completion. Categories derive from vm repository
+`rust/vm/src/commands/agent/contract.rs`.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Successful completed operation, or acknowledged submission as documented. |
+| `0` | Completed operation or documented acknowledged submission. |
+| `1` | Reserved for unhandled crashes; conformance classifies as runtime failure like 5. |
 | `2` | Usage, missing input, invalid flag combination, or input validation failure. |
 | `3` | Verification or conformance check failed after running. |
 | `4` | Blocked, confirmation required, or owner action required, including denied authorization. |
 | `5` | Runtime, service, transport, or internal error. |
-| `124` | Deadline exceeded; work may still be running and MUST be inspected before retry. |
+| `124` | Deadline exceeded; work may still be running; inspect before retry. |
 | `130` | Interrupted by SIGINT, when handled. |
+
+New commands MUST use canonical codes. Existing exit contracts MAY retain old codes
+during documented deprecation; help and the manifest MUST map each legacy code to its
+canonical category and identify the canonical-code invocation or version. Exit 1 always
+denotes failure.
 
 ## Work, retries, and versions
 
@@ -104,30 +109,48 @@ whose documented outcome is submission; waiting commands exit 0 only on completi
   inspection command). Later receipts MUST retain the operation ID and request
   ID. A completed receipt MUST assert the command's documented postcondition;
   an acknowledgement alone MUST NOT claim completion.
-- Mutations MUST accept `--idempotency-key KEY`. Retrying the same key, scope,
-  and normalized input MUST return the same operation/result without duplicating
+- Mutations MUST accept a caller-supplied retry key. New tools MUST name it
+  `--idempotency-key`; existing tools MAY keep a documented spelling such as
+  Butterboard's `--request-id`, including a documented dual correlation/retry role.
+  Replaying the same key, scope, and normalized input MUST return the same operation/result without duplicating
   effects, including after a lost response. Reusing a key with different input
   MUST fail with a stable conflict code and exit 2. Tools MUST publish the key's
-  scope and retention period; after expiry callers MUST inspect before retrying.
-  Generated keys MUST be returned as `data.idempotency_key` before work is
-  acknowledged; callers needing recovery from a lost first response MUST supply
-  their own key. A request ID identifies an invocation/operation trace; it MUST
-  NOT silently substitute for a caller's retry key.
+  scope and retention period; after expiry callers should inspect before retrying.
+  Generated keys MUST appear in `data.idempotency_key` on acknowledgement;
+  recovery from a lost first response requires caller-supplied keys. The manifest MUST identify the retry flag and receipt field;
+  correlation-only IDs do not imply deduplication.
 - CLI release versions and payload schema versions MUST be separate. `--version`
   reports the executable version; `schema_version` versions the envelope. Each
   payload MUST have a documented schema identifier/version, in its schema or
   payload, independently of both. Existing versioned envelopes keep their own
-  version namespace. Breaking field types, meanings, or enum changes MUST use a
-  new schema version. Readers MUST ignore unknown optional fields and reject
-  unsupported versions with a stable error and recovery instruction. Producers
-  MUST test supported consumer fixtures and deploy compatible readers before
-  changing default writers.
+  version namespace. Readers MUST ignore unknown optional fields and reject
+  unsupported versions with a stable error and recovery instruction.
 
-## Butter pilot command tree
+## Conformance interface
 
-`butter` is the canonical executable; `butterboard` remains a deprecated alias.
-Brackets mark optional inputs; `|` marks alternatives; `…` marks repetition.
-Each leaf inherits the shared flags, output, retry, and exit rules above.
+Each tool MUST publish a versioned JSON conformance manifest at a documented repository
+path. It MUST declare argv arrays for help/version precedence cases, JSON selection,
+aliases, exits, safe read/mutation/stream/inspection commands, required inputs, schemas,
+retry keys, and expected postconditions. For applicable service commands it MUST declare
+a flag or environment variable selecting an isolated fake endpoint or local fixture
+backend. The suite MUST be able to inject unavailability, denial, acceptance,
+completion, timeout, lost responses after commit, unknown fields/versions, and retry-key
+expiry, then inspect operation IDs, forwarded request IDs, and effect counts through
+declared commands or fixture requests. Fixtures MUST need no production credentials or
+production mutations. Tools without services MUST declare local state isolation and
+equivalent probes for applicable mutation/retry behavior; inapplicable scenarios MUST be
+explicit.
+
+## Release practice
+
+Breaking field types, meanings, or enum changes SHOULD use a new schema version.
+Producers SHOULD test supported consumer fixtures and deploy compatible readers before
+changing default writers; these process checks are outside subprocess conformance.
+
+## Butter pilot example
+
+`butter` is the canonical executable; `butterboard` remains a deprecated alias. Brackets
+mean optional; `|` means alternatives; `…` means repetition.
 
 ```text
 butter task list [--mine] [filters]
@@ -146,23 +169,5 @@ butter inbox list
 butter guide
 ```
 
-`task depend TASK --clear` MUST also work without `--on`; when both are supplied,
-replace dependencies with the supplied set. Review MUST require exactly one of
-`--accept` and `--reject`. Domain arguments, filters, and payloads remain owned by
-Butter. For example, `butter task list --mine --json` returns command
-`butter task list`, `status: "completed"`, `ok: true`, and `errors: []`.
-
-## Decisions and evidence
-
-- Use vm's envelope and exit categories, adding explicit receipt and retry fields,
-  because the existing contract is the smallest shared base: `.llm/agents/cli-standard/inputs/presentation.rs`, `.llm/agents/cli-standard/inputs/agent-contract.rs`.
-- Permit mapped existing envelopes instead of forcing one wrapper, because tools
-  retain domain contracts: `.llm/agents/cli-standard/inputs/q4-cli-contracts-sol.md`, `.llm/agents/cli-standard/inputs/q4-cli-contracts-astra.md`.
-- Keep native parsers and optional generation instead of mandatory codegen or a
-  shared Rust crate, because the inventory spans Rust, Python, and TypeScript:
-  `.llm/agents/cli-standard/inputs/cli-audit/inventory.md`, `.llm/agents/cli-standard/inputs/q4-cli-contracts-argon.md`, `.llm/agents/cli-standard/inputs/q4b-critique-oracle-argon.md`.
-- Require local offline help and JSON noninteraction, because service availability
-  must not prevent discovery: `.llm/agents/cli-standard/inputs/q4-cli-contracts-sol.md`, `.llm/agents/cli-standard/inputs/q4-cli-contracts-argon.md`.
-- Require compatibility fixtures and reader-first rollout instead of assuming
-  additive changes are safe, because consumers can reject new enum values:
-  `.llm/agents/cli-standard/inputs/q4b-critique-oracle-sol.md`, `.llm/agents/cli-standard/inputs/q4b-critique-oracle-astra.md`.
+Dependency replacement, review validation, arguments, filters, and payloads belong to
+Butter's contract.

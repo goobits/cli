@@ -2,7 +2,7 @@
 
 Generate production-ready CLIs in Python, Node.js, TypeScript, or Rust from a single YAML configuration file.
 
-All Goobits CLIs follow the [Goobits CLI standard](docs/cli-standard.md).
+The [Goobits CLI standard](docs/cli-standard.md) defines the target behavior for Goobits CLIs.
 
 ## Key Features
 
