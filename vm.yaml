@@ -1,0 +1,36 @@
+preset: vibe
+provider: docker
+project:
+  name: goobits-cli
+  default_environment: dev
+  workspace_path: /workspace
+vm:
+  image: '@vibe-image'
+  user: developer
+tools:
+  agent-skills: {}
+ports: {}
+host_sync:
+  git_config: true
+  ai_tools: true
+profiles:
+  docker:
+    provider: docker
+    ports: {}
+  podman:
+    provider: podman
+    ports: {}
+  tart:
+    provider: tart
+    tart:
+      guest_os: linux
+      disk_size: 80
+      ssh_user: admin
+      install_docker: true
+    vm:
+      image: vibe-tart-linux-base
+    ports: {}
+environments:
+  dev:
+    provider: docker
+    image: '@vibe-image'
