@@ -56,3 +56,18 @@ Do not add a language-specific path that bypasses the shared schema and IR unles
 - Avoid hard-coded performance or completeness claims in documentation; tests and release notes own measured results.
 - Never commit unless explicitly requested.
 - Shared macOS/Linux checkouts should use `core.filemode=false`; record executable bits with `git update-index --chmod=+x PATH` when needed.
+
+<!-- butterboard-task-authority:start -->
+
+## Current work lives in Butterboard
+
+Tasks for `goobits-cli` live in Butterboard. Before working on them, run `butterboard guide`
+in this repository and follow it. Miko authorizes you to manage this project's tasks with its key.
+
+Board: https://butterboard.butter/cli
+
+Deploys: only `live-prod` and `live-dev` deploy; the ops machine moves them after Miko approves.
+Never commit to or create `live-prod` or `live-dev` locally.
+To deploy, request promotion by handoff or Butterboard comment with the repo, target, exact commit SHA and what changed.
+
+<!-- butterboard-task-authority:end -->
