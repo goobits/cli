@@ -1274,50 +1274,36 @@ class TestRustInstallation(TestInstallationWorkflows):
         config = CLITestHelper.create_test_config("rust")
         CLITestHelper.generate_cli(config, temp_dir)
 
-        # Test cargo build with timeout
-        try:
-            result = PackageManagerHelper.run_command(
-                ["cargo", "build"],
-                cwd=temp_dir,
-                timeout=600,  # 10 minutes for first build
-            )
-            assert result.returncode == 0
-        except PackageManagerError as e:
-            if "timeout" in str(e).lower():
-                pytest.skip(f"cargo build timed out: {e}")
-            else:
-                raise
+        # Cargo reports the executable path after applying CARGO_TARGET_DIR,
+        # target triples and Cargo configuration. Do not guess its location.
+        result = PackageManagerHelper.run_command(
+            ["cargo", "build", "--message-format=json"],
+            cwd=temp_dir,
+            timeout=600,
+        )
+        artifacts = [json.loads(line) for line in result.stdout.splitlines() if line]
+        binaries = [
+            artifact["executable"]
+            for artifact in artifacts
+            if artifact.get("reason") == "compiler-artifact"
+            and artifact.get("executable")
+            and artifact["target"]["name"] == config.command_name
+        ]
+        assert len(binaries) == 1, f"Expected one CLI binary, got {binaries}"
+        assert Path(binaries[0]).is_file()
+        result = PackageManagerHelper.run_command([binaries[0], "--help"])
+        assert "hello" in result.stdout
 
-        # Verify binary was built
-        target_dir = Path(temp_dir) / "target" / "debug"
-        binary_name = config.command_name.replace(
-            "-", "_"
-        )  # Cargo converts hyphens to underscores
-        binary_path = target_dir / binary_name
-
-        if not binary_path.exists():
-            # Try with original name
-            binary_path = target_dir / config.command_name
-
-        assert binary_path.exists(), f"Binary not found at {binary_path}"
-
-        # Test cargo install --path . with timeout
-        try:
-            result = PackageManagerHelper.run_command(
-                ["cargo", "install", "--path", "."],
-                cwd=temp_dir,
-                timeout=600,  # 10 minutes for install
-            )
-            assert result.returncode == 0
-        except PackageManagerError as e:
-            if "timeout" in str(e).lower():
-                pytest.skip(f"cargo install timed out: {e}")
-            else:
-                raise
-        self._track_installation("cargo", config.package_name)
-
-        # Verify CLI is available and functional
-        self._test_cli_functionality(config.command_name)
+        install_dir = self._create_temp_dir()
+        PackageManagerHelper.run_command(
+            ["cargo", "install", "--path", ".", "--root", install_dir],
+            cwd=temp_dir,
+            timeout=600,
+        )
+        result = PackageManagerHelper.run_command(
+            [str(Path(install_dir) / "bin" / config.command_name), "--help"]
+        )
+        assert "hello" in result.stdout
 
     def test_rust_generated_files_validation(self):
         """Test that generated Rust installation files are correct."""
