@@ -19,16 +19,16 @@ SECTIONS = {
 # One contract table owns applicability, exits, required inputs and observations.
 # fmt: off
 CONTRACTS = {
-    "read": {}, "missing-input": {"exit": 2}, "invalid-input": {"exit": 2, "stable": True},
-    "invalid-flag": {"exit": 2}, "conflict": {"exit": 2}, "confirmation": {"exit": 4},
-    "confirmation-yes": {}, "owner-decision": {"exit": 4}, "denial": {"exit": 4},
+    "read": {}, "missing-input": {"exit": 2, "interaction": "no-bypass"}, "invalid-input": {"exit": 2, "stable": True},
+    "invalid-flag": {"exit": 2}, "conflict": {"exit": 2}, "confirmation": {"exit": 4, "yes_variant": "confirmation-yes", "requires": ("confirmation-yes",), "interaction": "decision"},
+    "confirmation-yes": {}, "owner-decision": {"exit": 4, "interaction": "decision"}, "denial": {"exit": 4, "interaction": "no-bypass"},
     "unavailable": {"exit": 5, "stable": True}, "verification": {"exit": 3},
     "timeout": {"exit": 124}, "interrupt": {"exit": 130},
     "partial-failure": {"observe": lambda d, s, p: d["status"] == "failed" and d["data"] is not None},
     "multiple-errors": {"observe": lambda d, s, p: len(d["errors"]) >= 2},
-    "acceptance": {"status": "accepted", "fields": ("inspection_command", "inspection_argv")},
+    "acceptance": {"status": "accepted", "fields": ("inspection_command", "inspection_argv"), "also": ("receipts", "receipts", ())},
     "completion": {}, "stream": {}, "stream-failure": {},
-    "mutation": {"method": "retry", "fields": ("different_input", "equivalent_argv")},
+    "mutation": {"method": "retry", "fields": ("different_input", "equivalent_argv"), "requires": ("lost-response", "expiry"), "also": ("generated-retry-key", "probe", ("mutation",))},
     "lost-response": {"method": "retry", "fields": ("different_input", "equivalent_argv")},
     "unknown-fields": {"observe": lambda d, s, p: s["unknown_fields_sent"] and bool(s["upstream_messages"])},
     "unknown-version": {"exit": 2, "stable": True, "fields": ("error_codes",),
@@ -57,7 +57,15 @@ HELP_CASES = (
 SCENARIOS = set(CONTRACTS) - {"confirmation-yes"}
 CODES = {name: c["exit"] for name, c in CONTRACTS.items() if "exit" in c}
 SHARED = ("--json", "--quiet", "--verbose", "--yes", "--no-input")
-FLAG_CASES = [(flag, before) for flag in SHARED for before in (True, False)]
+# fmt: off
+FLAG_CASES = {
+    "replace": ("--json", "--quiet", "--verbose"),
+    "shared": [(flag, before) for flag in SHARED for before in (True, False)],
+    "decision": [("none", []), ("none", ["--no-input"]), ("none", ["--json"])],
+    "tty": [("stdin", []), ("stdout", []), ("both", ["--no-input"]), ("both", ["--json"])],
+}
+# fmt: on
+FLAG_CASES["no-bypass"] = FLAG_CASES["decision"] + [("none", ["--yes", "--json"])]
 HELP_TOPICS = (
     "usage",
     "arguments",
@@ -87,16 +95,11 @@ def help_matrix(manifest):
             winner = kind if h["precedence"] == "first" else h["precedence"]
             kind = "text" if winner == "help" else "version"
         command = manifest["name"] if scope == "root" else h[scope + "_command"]
-        cases.append(
-            {
-                "id": case_id,
-                "argv": argv,
-                "kind": kind,
-                "command": command,
-                "json": machine == "json"
-                or (machine == "trailing" and h["trailing_options"] == "recognized"),
-            }
+        case = {"id": case_id, "argv": argv, "kind": kind, "command": command}
+        case["json"] = machine == "json" or (
+            machine == "trailing" and h["trailing_options"] == "recognized"
         )
+        cases.append(case)
     return cases
 
 
@@ -232,9 +235,8 @@ class Suite:
         except (
             AssertionError,
             AttributeError,
-            IndexError,
             ValueError,
-            KeyError,
+            LookupError,
             TypeError,
             OSError,
             subprocess.SubprocessError,
@@ -333,17 +335,15 @@ class Suite:
         m = self.manifest
         assert type(m["manifest_version"]) is int and m["manifest_version"] == 1
         for argv in (m["executable"], m["fixture"]["argv"]):
-            assert (
-                isinstance(argv, list)
-                and argv
-                and all(isinstance(a, str) for a in argv)
-            )
+            assert isinstance(argv, list) and argv, "argv must be a nonempty array"
+            assert all(isinstance(a, str) for a in argv), "argv entries must be strings"
         assert (
             m["fixture"]["isolation"]
             and m["payload_schema"]["identifier"]
             and m["payload_schema"]["version"]
         )
         assert m["version"] and "read" in m["probes"]
+        assert "1" not in m.get("legacy_exits", {}), "reserved exit 1 denotes a crash"
         for command in m["command_tree"]:
             parts = command.split()
             assert parts[0] == m["name"] and (
@@ -366,13 +366,14 @@ class Suite:
             assert spec["argv"] and spec["command"] in prefixes, (
                 "probe must name a canonical resolved path"
             )
-            for field in CONTRACTS.get(name, {}).get("fields", ()):
+            contract = CONTRACTS.get(name, {})
+            for field in contract.get("fields", ()):
                 assert spec[field], "scenario requires " + field
-        assert set(m["command_tree"]) <= set(self.command_cases()), (
-            "provide flag cases for every command path"
-        )
-        for command, (_, spec) in self.command_cases().items():
-            assert spec["command"] == command, (
+            assert all(n in m["probes"] for n in contract.get("requires", ()))
+        cases = self.command_cases()
+        for command in m["command_tree"]:
+            assert command in cases, "provide flag cases for every command path"
+            assert cases[command][1]["command"] == command, (
                 "flag probe must exercise its declared path"
             )
         for alias in m["aliases"]:
@@ -408,8 +409,6 @@ class Suite:
             assert re.search(
                 r"(?<![0-9])" + str(code) + r"(?![0-9])", docs["exit codes"]
             ), "document exit mappings"
-        if "confirmation" in m["probes"]:
-            assert "confirmation-yes" in m["probes"]
         if "mutation" in m["probes"]:
             retry = m["retry"]
             for field in "flag receipt_field scope retention conflict_code".split():
@@ -418,9 +417,9 @@ class Suite:
                 retry["scope"] in docs["scope"]
                 and retry["retention"] in docs["retention"]
             )
-            assert all(n in m["probes"] for n in ("lost-response", "expiry"))
 
     def category(self, result):
+        assert result.returncode != 1, "reserved exit 1 denotes a crash"
         return self.manifest.get("legacy_exits", {}).get(
             str(result.returncode), result.returncode
         )
@@ -463,7 +462,7 @@ class Suite:
         assert last["command"] == spec["command"], "report deepest canonical command"
         expected = contract.get("exit", spec.get("exit", 0))
         actual = self.category(result)
-        assert actual == expected and result.returncode != 1, "exit category mismatch"
+        assert actual == expected, "exit category mismatch"
         assert (actual == 0) == last["ok"], "exit and success disagree"
         assert last["status"] == spec.get(
             "status", contract.get("status", "completed" if expected == 0 else "failed")
@@ -479,7 +478,9 @@ class Suite:
         assert after["effects"] - before["effects"] == spec.get("effects", 0), (
             "unexpected mutation count"
         )
-        if spec.get("dispatch", after["service_calls"] > before["service_calls"]):
+        if after["service_calls"] > before["service_calls"] or spec.get(
+            "dispatch", False
+        ):
             assert last["request_id"] in after["request_ids"], (
                 "request ID was not forwarded"
             )
@@ -550,10 +551,15 @@ class Suite:
         if key not in self.baselines:
             self.baselines[key] = self.probe(name, spec=spec)
         baseline, original, _ = self.baselines[key]
-        args = [a for a in spec["argv"] if a not in SHARED]
+        replace = {*FLAG_CASES["replace"], flag}
+        args = [a for a in spec["argv"] if a not in replace]
         flags = [flag] + ([] if flag == "--json" else ["--json"])
+        variant = (
+            CONTRACTS.get(name, {}).get("yes_variant") if flag == "--yes" else None
+        )
+        selected = self.manifest["probes"][variant] if variant else spec
         result, docs, _ = self.probe(
-            name, flags + args if before else args + flags, spec=spec
+            variant or name, flags + args if before else args + flags, spec=selected
         )
         if flag in {"--verbose", "--quiet"}:
             assert self.stable_result(docs) == self.stable_result(original), (
@@ -610,15 +616,11 @@ class Suite:
         canonical, docs, state = self.probe("read", alias["canonical_argv"])
         assert doc["data"] == docs[-1]["data"], "alias must preserve results"
 
-    def generated_key(self):
-        self.probe("mutation")
-
     def stable_error(self, name: str):
-        _, first, _ = self.probe(name)
-        _, second, _ = self.probe(name)
-        assert [e["code"] for e in first[-1]["errors"]] == [
-            e["code"] for e in second[-1]["errors"]
+        codes = [
+            [e["code"] for e in self.probe(name)[1][-1]["errors"]] for _ in range(2)
         ]
+        assert codes[0] == codes[1]
 
     def retry(self, scenario: str):
         spec = self.manifest["probes"][scenario]
@@ -663,19 +665,13 @@ class Suite:
         assert self.fixture("inspect")["postcondition"]
 
     def execute(self) -> list:
-        self.check(
-            "manifest",
-            "manifest",
-            self.validate_manifest,
-            "Publish the required scenario/help matrix and concrete documentation.",
-        )
-        if not self.results[-1]["passed"]:
-            return self.results
-
         def check(rule, section, fn, *args):
             hint = f"Apply docs/cli-standard.md#{SECTIONS[section]}; {rule}"
             self.check(rule, section, lambda: fn(*args), hint)
 
+        check("manifest", "manifest", self.validate_manifest)
+        if not self.results[-1]["passed"]:
+            return self.results
         for case in self.manifest["help_version"]["cases"]:
             check("help-version/" + case["id"], "commands", self.help_case, case)
         for name in self.manifest["probes"]:
@@ -689,8 +685,11 @@ class Suite:
             )
             if contract.get("stable"):
                 check("stable-error/" + name, "output", self.stable_error, name)
+            if "also" in contract:
+                rule, method, args = contract["also"]
+                check(rule, "work", getattr(self, method), *args)
         for command, (name, spec) in self.command_cases().items():
-            for flag, before in FLAG_CASES:
+            for flag, before in FLAG_CASES["shared"]:
                 side = "before" if before else "after"
                 rule = f"flag/{command}/{flag}/{side}"
                 check(rule, "commands", self.flag, flag, before, name, spec)
@@ -702,19 +701,12 @@ class Suite:
                     name,
                     spec,
                 )
-        for name in ("missing-input", "confirmation", "owner-decision", "denial"):
-            if name not in self.manifest["probes"]:
+        for name, contract in CONTRACTS.items():
+            if name not in self.manifest["probes"] or not contract.get("interaction"):
                 continue
-            variants = [("none", []), ("none", ["--no-input"]), ("none", ["--json"])]
-            if name in {"missing-input", "denial"}:
-                variants.append(("none", ["--yes", "--json"]))
-            if os.name == "posix":
-                variants += [
-                    ("stdin", []),
-                    ("stdout", []),
-                    ("both", ["--no-input"]),
-                    ("both", ["--json"]),
-                ]
+            variants = FLAG_CASES[contract["interaction"]] + (
+                FLAG_CASES["tty"] if os.name == "posix" else []
+            )
             for index, (tty, flags) in enumerate(variants):
                 rule = f"interaction/{name}/{index}"
                 check(rule, "output", self.interaction, name, flags, tty)
@@ -722,12 +714,6 @@ class Suite:
             for quiet in (False, True):
                 rule = f"alias/{index}/{quiet}"
                 check(rule, "commands", self.alias, alias, quiet)
-        for name, enabled, fn in (
-            ("generated-retry-key", "mutation", self.generated_key),
-            ("receipts", "acceptance", self.receipts),
-        ):
-            if enabled in self.manifest["probes"]:
-                check(name, "work", fn)
         return self.results
 
 
@@ -739,11 +725,7 @@ def lookup(value: Any, path: str) -> Any:
 
 def check_manifest(path: Path) -> list:
     manifest = json.loads(path.read_text(encoding="utf-8"))
-    artifact_root = Path(
-        os.environ.get("MATILDA_ARTIFACT_ROOT", "/var/tmp/matilda/workspace")
-    )
-    artifact_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        prefix="goobits-conformance-", dir=artifact_root
-    ) as state:
+    root = Path(os.environ.get("MATILDA_ARTIFACT_ROOT", "/var/tmp/matilda/workspace"))
+    root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="goobits-conformance-", dir=root) as state:
         return Suite(manifest, path.resolve().parent, state).execute()

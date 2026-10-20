@@ -89,7 +89,6 @@ def test_flags_cover_stream_failure_and_inspection_paths(tmp_path, monkeypatch):
         "help_case",
         "probe",
         "stable_error",
-        "generated_key",
         "interaction",
         "alias",
         "retry",
@@ -353,3 +352,145 @@ def test_native_pilot_manifest(tmp_path, language):
 def test_quiet_keeps_errors_on_failure_only_path(tmp_path):
     suite = target(tmp_path, "quiet-error")
     suite.flag("--quiet", True, "unavailable")
+
+
+@pytest.mark.parametrize(
+    "flag", ["--json", "--quiet", "--verbose", "--yes", "--no-input"]
+)
+@pytest.mark.parametrize("before", [True, False])
+def test_shared_flags_preserve_required_confirmation(
+    tmp_path, flag, before, monkeypatch
+):
+    suite = target(tmp_path)
+    spec = suite.manifest["probes"]["confirmation-yes"]
+    spec["argv"].append("--no-input")
+    execute = suite.run
+
+    def run(argv, hook=False, request=None):
+        if not hook:
+            assert "--yes" in argv and "--no-input" in argv
+        return execute(argv, hook, request)
+
+    monkeypatch.setattr(suite, "run", run)
+    suite.flag(flag, before, "confirmation-yes", spec)
+    assert suite.fixture("inspect")["effects"] == 1
+
+
+@pytest.mark.parametrize("before", [True, False])
+def test_yes_uses_declared_confirmation_outcome(tmp_path, before):
+    suite = target(tmp_path)
+    suite.flag("--yes", before, "confirmation")
+    assert suite.fixture("inspect")["effects"] == 1
+
+
+def test_dispatch_false_cannot_hide_observed_forwarding(tmp_path):
+    suite = target(tmp_path, "request")
+    suite.manifest["probes"]["read"]["dispatch"] = False
+    with pytest.raises(AssertionError, match="request ID was not forwarded"):
+        suite.probe("read")
+
+
+@pytest.mark.parametrize(
+    "method,name,mapped", [("retry", "mutation", 2), ("interaction", "confirmation", 4)]
+)
+def test_reserved_exit_one_cannot_become_a_legacy_category(
+    tmp_path, monkeypatch, method, name, mapped
+):
+    suite = target(tmp_path)
+    suite.manifest["legacy_exits"] = {"1": mapped}
+    execute = suite.run
+
+    def run(argv, hook=False, request=None):
+        result = execute(argv, hook, request)
+        if not hook and (method == "interaction" or "--changed" in argv):
+            result.returncode = 1
+        return result
+
+    monkeypatch.setattr(suite, "run", run)
+    args = (name,) if method == "retry" else (name, ["--json"])
+    with pytest.raises(AssertionError, match="reserved|crash"):
+        getattr(suite, method)(*args)
+
+
+def test_manifest_rejects_reserved_exit_mapping(tmp_path):
+    suite = target(tmp_path)
+    suite.manifest["legacy_exits"] = {"1": 2}
+    with pytest.raises(AssertionError, match="reserved|crash"):
+        suite.validate_manifest()
+
+
+def test_schema_rejects_reserved_exit_mapping():
+    from .test_conformance import FIXTURES
+
+    jsonschema = pytest.importorskip(
+        "jsonschema", reason="optional manifest authoring validator"
+    )
+    schema = json.loads(
+        (FIXTURES.parents[3] / "docs/conformance-manifest.schema.json").read_text()
+    )
+    value = manifest()
+    value["legacy_exits"] = {"1": 2}
+    value["canonical_exit_invocation"] = "tiny --canonical-exits item read"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(value, schema)
+
+
+@pytest.mark.parametrize(
+    "missing", ["retry", "confirmation-yes", "canonical_exit_invocation"]
+)
+def test_schema_requires_conditional_declarations(missing):
+    from .test_conformance import FIXTURES
+
+    jsonschema = pytest.importorskip(
+        "jsonschema", reason="optional manifest authoring validator"
+    )
+    schema = json.loads(
+        (FIXTURES.parents[3] / "docs/conformance-manifest.schema.json").read_text()
+    )
+    value = manifest()
+    if missing == "confirmation-yes":
+        del value["probes"][missing]
+    elif missing == "canonical_exit_invocation":
+        value["legacy_exits"] = {"22": 2}
+    else:
+        del value[missing]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(value, schema)
+
+
+@pytest.mark.parametrize(
+    "original,selected", [("--verbose", "--quiet"), ("--quiet", "--verbose")]
+)
+def test_flag_selection_replaces_competing_diagnostic_mode(
+    tmp_path, original, selected
+):
+    suite = target(tmp_path)
+    suite.manifest["probes"]["read"]["argv"].append(original)
+    suite.flag(selected, True)
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "docs/conformance.example.json",
+        "src/tests/fixtures/conformance/pilots/rust.manifest.json",
+        "src/tests/fixtures/conformance/pilots/typescript.manifest.json",
+    ],
+)
+def test_published_manifests_validate_against_schema(relative):
+    from .test_conformance import FIXTURES
+
+    jsonschema = pytest.importorskip(
+        "jsonschema", reason="optional manifest authoring validator"
+    )
+    root = FIXTURES.parents[3]
+    schema = json.loads((root / "docs/conformance-manifest.schema.json").read_text())
+    jsonschema.Draft202012Validator.check_schema(schema)
+    jsonschema.validate(json.loads((root / relative).read_text()), schema)
+
+
+def test_runner_stays_within_reviewed_line_bound():
+    from .test_conformance import FIXTURES
+
+    source = FIXTURES.parents[3] / "src/goobits_cli/conformance/suite.py"
+    assert len(source.read_text().splitlines()) <= 732

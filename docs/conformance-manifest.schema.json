@@ -463,7 +463,10 @@
     "legacy_exits": {
       "type": "object",
       "propertyNames": {
-        "pattern": "^[0-9]+$"
+        "pattern": "^[0-9]+$",
+        "not": {
+          "const": "1"
+        }
       },
       "additionalProperties": {
         "type": "integer",
@@ -635,5 +638,68 @@
   ],
   "additionalProperties": false,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Goobits conformance manifest version 1"
+  "title": "Goobits conformance manifest version 1",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "probes": {
+            "required": [
+              "mutation"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "retry"
+        ],
+        "properties": {
+          "probes": {
+            "required": [
+              "lost-response",
+              "expiry"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "probes": {
+            "required": [
+              "confirmation"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "probes": {
+            "required": [
+              "confirmation-yes"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "legacy_exits"
+        ],
+        "properties": {
+          "legacy_exits": {
+            "minProperties": 1
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "canonical_exit_invocation"
+        ]
+      }
+    }
+  ]
 }
