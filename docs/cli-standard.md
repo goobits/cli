@@ -196,8 +196,8 @@ example's executable and fixture declarations (paths resolve from the manifest):
 
 Exit 0 means all checks passed; exit 3 reports failed rules, section links and fix hints.
 Structural validation uses the published manifest schema for every supplied declaration.
-Each manifest problem is reported separately. Independent checks still run; dependent
-checks have `skipped: true`, `passed: null` and a dependency reason in `detail`.
+Every unusable declaration, including extra entries and dangling references, produces
+its own manifest problem. Independent checks still run; dependent checks have `skipped: true`, `passed: null` and a dependency reason in `detail`.
 Deprecated exit mappings produce passing checks with `warning: true` and stderr warnings.
 Only run trusted manifests: both argv arrays execute subprocesses. The suite supplies a
 private `GOOBITS_CONFORMANCE_STATE`, HOME and TMPDIR in the system temporary directory

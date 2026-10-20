@@ -59,6 +59,7 @@ HELP_CASES = (
 # fmt: on
 SCENARIOS = set(CONTRACTS) - {"confirmation-yes"}
 CODES = {name: c["exit"] for name, c in CONTRACTS.items() if "exit" in c}
+TERMINAL_STATUSES = {"accepted", "completed", "failed"}
 SHARED = ("--json", "--quiet", "--verbose", "--yes", "--no-input")
 # fmt: off
 FLAG_CASES = {
@@ -122,7 +123,7 @@ def envelope_errors(doc: Any, stream: bool = False) -> list:
         errors.append("unsupported schema_version")
     if not doc["request_id"].strip() or not doc["command"].strip():
         errors.append("empty request_id or command")
-    statuses = {"accepted", "completed", "failed"} | ({"running"} if stream else set())
+    statuses = TERMINAL_STATUSES | ({"running"} if stream else set())
     if doc["status"] not in statuses:
         errors.append("invalid status")
     if doc["ok"] != (not doc["errors"]) or doc["ok"] != (doc["status"] != "failed"):
@@ -161,20 +162,16 @@ def documents(stdout: str, stream: bool = False, mapping=None) -> list:
     decoder = json.JSONDecoder(parse_constant=reject_constant)
     if stream:
         docs = [decoder.decode(line) for line in stdout.splitlines()]
-        if mapping:
-            docs = [map_envelope(doc, mapping) for doc in docs]
-        if not docs or docs[-1].get("status") not in {
-            "completed",
-            "failed",
-            "accepted",
-        }:
-            raise ValueError("stream needs a terminal receipt")
     else:
         doc, end = decoder.raw_decode(stdout.lstrip())
         assert stdout.lstrip()[end:] == "\n", (
             "exactly one JSON document followed by one newline is required"
         )
-        docs = [map_envelope(doc, mapping) if mapping else doc]
+        docs = [doc]
+    if mapping:
+        docs = [map_envelope(doc, mapping) for doc in docs]
+    if stream and (not docs or docs[-1].get("status") not in TERMINAL_STATUSES):
+        raise ValueError("stream needs a terminal receipt")
     for doc in docs:
         problems = envelope_errors(doc, stream)
         if problems:
@@ -336,7 +333,6 @@ class Suite:
                 assert test(), hint
             except (AssertionError, LookupError, TypeError, AttributeError, ValueError, StopIteration) as exc:
                 rules.setdefault(path, path + ": " + (str(exc) or hint))
-        rule("manifest_version", lambda: type(m.get("manifest_version")) is int and m["manifest_version"] == 1)
         rule("long_flags", lambda: bool(m.get("long_flags")))
         probes = m.get("probes") if isinstance(m.get("probes"), dict) else {}
         tree = m.get("command_tree") if isinstance(m.get("command_tree"), list) else []
@@ -344,18 +340,24 @@ class Suite:
             rule(f"command_tree.{index}", lambda command=command: command.split()[0] == m["name"] and (len(command.split()) >= 3 or command in m.get("entrypoint_exceptions", [])) and all(re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", p) for p in command.split()))
         for name in sorted(SCENARIOS):
             rule("probes." + name, lambda name=name: name in probes or bool(m["inapplicable"].get(name)), "missing scenario")
-        prefixes = {" ".join(c.split()[:i]) for c in tree if isinstance(c, str) for i in range(1, len(c.split()) + 1)}
+        prefixes = {" ".join(c.split()[:i]) for index, c in enumerate(tree) if isinstance(c, str) and f"command_tree.{index}" not in rules for i in range(1, len(c.split()) + 1)}
         for name, spec in probes.items():
             path = "probes." + name
-            rule(path + ".command", lambda spec=spec: spec["command"] in prefixes, "probe must name a canonical resolved path")
             for field in CONTRACTS.get(name, {}).get("fields", ()):
                 rule(path + "." + field, lambda field=field, spec=spec: bool(spec[field]), "scenario requires " + field)
-        cases = self.command_cases()
-        for command in tree:
-            rule("flag_probes." + str(command), lambda command=command: command in cases and bool(cases[command][1].get("argv")) and cases[command][1]["command"] == command, "provide flag cases for every command path")
-        for index, alias in enumerate(m.get("aliases", []) if isinstance(m.get("aliases"), list) else []):
-            rule(f"aliases.{index}", lambda alias=alias: alias["canonical"] in tree)
-        h = m.get("help_version") if isinstance(m.get("help_version"), dict) else {}
+        cases, flags, h = self.command_cases(), m.get("flag_probes", {}), m.get("help_version") if isinstance(m.get("help_version"), dict) else {}
+        for command in dict.fromkeys([*[c for c in tree if isinstance(c, str)], *(flags if isinstance(flags, dict) else {})]):
+            rule("flag_probes." + command, lambda command=command: command in tree and command in cases and bool(cases[command][1].get("argv")) and cases[command][1]["command"] == command, "flag probe must reference a usable probe for a declared command")
+        references = [
+            *[(f"entrypoint_exceptions.{i}", c, tree) for i, c in enumerate(m.get("entrypoint_exceptions", []) if isinstance(m.get("entrypoint_exceptions"), list) else [])],
+            *[("inapplicable." + n, n, SCENARIOS) for n in (m.get("inapplicable", {}) if isinstance(m.get("inapplicable"), dict) else {})],
+            *[(f"probes.{n}.{f}", p.get(f), prefixes if f == "command" else [p[f]] if isinstance(p.get(f), str) and any(p[f] == c or p[f].startswith(c + " ") for i, c in enumerate(tree) if isinstance(c, str) and f"command_tree.{i}" not in rules) else []) for n, p in probes.items() if isinstance(p, dict) for f in ("command", "inspection_command") if f in p],
+            *[(f"aliases.{i}.canonical", a.get("canonical"), [c for j, c in enumerate(tree) if f"command_tree.{j}" not in rules]) for i, a in enumerate(m.get("aliases", []) if isinstance(m.get("aliases"), list) else []) if isinstance(a, dict)],
+            *[("help_version." + f, h.get(f), prefixes) for f in ("leaf_command", "missing_command")],
+            *[("help_version.scope_usage." + c, c, prefixes) for c in (h.get("scope_usage", {}) if isinstance(h.get("scope_usage"), dict) else {})],
+        ]
+        for path, value, choices in references:
+            rule(path, lambda value=value, choices=choices: value in choices, "reference must name a declared command or scenario")
         if "missing-input" in probes:
             for field, expected in {"missing_argv": lambda: [a for a in probes["missing-input"]["argv"] if a not in SHARED], "missing_command": lambda: probes["missing-input"]["command"]}.items():
                 rule("help_version." + field, lambda expected=expected, field=field: h[field] == expected(), "missing-input help case must use the actual missing invocation")
@@ -366,8 +368,7 @@ class Suite:
             if isinstance(case, dict) and isinstance(case.get("id"), str):
                 rule(f"help_version.cases.{index}.id", lambda case=case: case["id"] not in seen, "case IDs must be unique")
                 seen.add(case["id"])
-                if case.get("kind") == "text":
-                    rule(f"help_version.cases.{index}.command", lambda case=case: case["command"] in h["scope_usage"], "declare scope usage for this help case")
+                rule(f"help_version.cases.{index}.command", lambda case=case: case["command"] in prefixes and (case.get("kind") != "text" or case["command"] in h["scope_usage"]), "help case must name a canonical scope with declared usage")
         docs = m.get("help_required") if isinstance(m.get("help_required"), dict) else {}
         for topic in HELP_TOPICS:
             rule("help_required." + topic, lambda topic=topic: isinstance(docs[topic], str) and len(docs[topic].strip()) > len(topic) + 3, "help documentation: " + topic)
@@ -397,8 +398,7 @@ class Suite:
 
     # fmt: off
     def command_cases(self):
-        probes = self.manifest.get("probes", {})
-        probes = probes if isinstance(probes, dict) else {}
+        probes = self.manifest.get("probes") if isinstance(self.manifest.get("probes"), dict) else {}
         cases = {p["command"]: (n, p) for n, p in reversed(list(probes.items()))
                  if n != "lost-response" and isinstance(p, dict) and isinstance(p.get("command"), str)}
         flags = self.manifest.get("flag_probes", {})
@@ -410,7 +410,8 @@ class Suite:
                                   status="completed", effects=spec.get("inspection_effects", 0), setup_argv=spec.get("argv", []), _inspection=True)
                 cases.setdefault(spec["inspection_command"], (name, inspection))
         tree = self.manifest.get("command_tree", [])
-        return {c: cases.get(c, ("read", {"command": c})) for c in (tree if isinstance(tree, list) else []) if isinstance(c, str)}
+        declared = [c if isinstance(c, str) else f"@{i}" for i, c in enumerate(tree if isinstance(tree, list) else [])]
+        return {c: cases.get(c, ("read", {"command": c})) for c in [*declared, *(flags if isinstance(flags, dict) else {}), *(cases if not isinstance(tree, list) else {})]}
     # fmt: on
 
     def probe(self, name: str, argv=None, reset=True, spec=None, tty="none") -> tuple:
@@ -641,25 +642,28 @@ class Suite:
             self.results[-1].update(passed=False, detail=detail)
         if not problems:
             self.check("manifest", "manifest", lambda: None, "Keep declarations current")
-        probes = self.manifest.get("probes", {})
-        probes = probes if isinstance(probes, dict) else {}
+        probes = self.manifest.get("probes") if isinstance(self.manifest.get("probes"), dict) else {}
 
         def check(rule, section, fn, *args, needs=()):
-            needs = list(needs) + ["$", "executable", "fixture", "timeout_seconds"] + (["flag_probes." + rule.split("/")[1]] if rule.startswith("flag/") else [])
+            needs = list(needs) + ["$", "manifest_version", "executable", "fixture", "timeout_seconds"]
             if rule.startswith("help-version/"):
                 case = args[0] if isinstance(args[0], dict) else {}
-                needs += (["help_version.cases." + case["id"]] if isinstance(case.get("id"), str) and case["id"] in {r[0] for r in HELP_CASES} else []) + (["envelope_mapping"] if case.get("json") else []) + (["version"] if case.get("kind") == "version" else ["help_required", "help_version.scope_usage", "canonical_exit_invocation", "legacy_exits"])
+                needs += ["help_version.trailing_options"] if any(r[0] == case.get("id") and r[3] == "trailing" for r in HELP_CASES) else []
+                needs += ["help_version.precedence"] if case.get("id") in ("help-version", "version-help") else []
+                needs += (["help_version.cases." + case["id"]] if isinstance(case.get("id"), str) and case["id"] in {r[0] for r in HELP_CASES} else []) + (["envelope_mapping"] if case.get("json") else []) + (["version"] if case.get("kind") == "version" else ["help_required", "help_version.scope_usage." + str(case.get("command")), "canonical_exit_invocation", "legacy_exits"])
             else:
-                needs += ["legacy_exits", "envelope_mapping"] + (["flag_probes." + rule.split("/", 2)[-1]] if rule.startswith("json/color-capable-tty/") else [])
+                needs += ["legacy_exits", "envelope_mapping"]
                 name = args[2] if rule.startswith("flag/") else args[0] if args else "acceptance"
                 if isinstance(name, str):
-                    needs += ["probes." + name + "." + f for f in "argv command expect effects status stream dispatch error_codes setup_argv inspection_command".split()]
+                    needs += ["probes." + name + "." + f for f in "argv command exit expect effects status stream dispatch error_codes setup_argv inspection_command".split()]
                     if rule == "receipts":
                         needs += ["probes.acceptance.inspection_argv"]
                     if rule.startswith(("flag/", "json/color-capable-tty/")) and isinstance(args[-1], dict) and args[-1].get("_inspection"):
                         needs += ["probes." + name + "." + f for f in "inspection_argv inspection_effects".split()]
                     if rule.startswith("retry/"):
                         needs += ["retry", "probes." + name]
+                    if name not in probes:
+                        needs += ["inapplicable." + name]
                     if rule.startswith("flag/"):
                         needs += list(FLAG_CASES["dependencies"].get(args[0], ()))
                         if args[0] == "--yes" and CONTRACTS.get(name, {}).get("yes_variant"):
@@ -683,8 +687,8 @@ class Suite:
             label = case.get("id") if isinstance(case, dict) and isinstance(case.get("id"), str) else f"@{index}"
             label = label if first.get(label, index) == index else f"@{index}"
             check("help-version/" + label, "commands", self.help_case, case, needs=[f"help_version.cases.{index}"] if index is not None else [])
-        for name in dict.fromkeys([*sorted(SCENARIOS), *probes]):
-            if name not in probes and not any(p == "probes." + name for p, _ in problems):
+        for name in dict.fromkeys([*sorted(CONTRACTS), *probes]):
+            if name not in probes and not any(p in {"probes", "probes." + name, "inapplicable", "inapplicable." + name} for p, _ in problems):
                 continue
             contract = CONTRACTS.get(name, {})
             method = contract.get("method", "probe")
@@ -694,23 +698,19 @@ class Suite:
             if "also" in contract:
                 rule, method, args = contract["also"]
                 check(rule, "work", getattr(self, method), *args)
+            if contract.get("interaction"):
+                for index, (tty, flags) in enumerate(FLAG_CASES[contract["interaction"]] + (FLAG_CASES["tty"] if os.name == "posix" else [])):
+                    check(f"interaction/{name}/{index}", "output", self.interaction, name, flags, tty)
+        tree = self.manifest.get("command_tree", [])
         for command, (name, spec) in self.command_cases().items():
+            needs = ["flag_probes." + command] + ([f"command_tree.{i}" for i, c in enumerate(tree) if c == command or command == f"@{i}"] if isinstance(tree, list) else ["command_tree"])
             for flag, before in FLAG_CASES["shared"]:
                 side = "before" if before else "after"
                 rule = f"flag/{command}/{flag}/{side}"
-                check(rule, "commands", self.flag, flag, before, name, spec)
+                check(rule, "commands", self.flag, flag, before, name, spec, needs=needs)
             if os.name == "posix":
-                check("json/color-capable-tty/" + command, "output", self.json_terminal, name, spec)
-        for name, contract in CONTRACTS.items():
-            if name not in probes or not contract.get("interaction"):
-                continue
-            variants = FLAG_CASES[contract["interaction"]] + (
-                FLAG_CASES["tty"] if os.name == "posix" else []
-            )
-            for index, (tty, flags) in enumerate(variants):
-                rule = f"interaction/{name}/{index}"
-                check(rule, "output", self.interaction, name, flags, tty)
-        for index, alias in enumerate(self.manifest.get("aliases", []) if isinstance(self.manifest.get("aliases"), list) else []):
+                check("json/color-capable-tty/" + command, "output", self.json_terminal, name, spec, needs=needs)
+        for index, alias in enumerate(self.manifest.get("aliases", []) if isinstance(self.manifest.get("aliases"), list) else [None]):
             for quiet in (False, True):
                 rule = f"alias/{index}/{quiet}"
                 check(rule, "commands", self.alias, alias, quiet)
