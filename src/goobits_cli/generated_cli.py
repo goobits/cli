@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import click
-
 try:
     import tomllib
 except ImportError:  # pragma: no cover
@@ -25,31 +24,27 @@ try:
 except ImportError:  # pragma: no cover
     toml = None
 if tomllib is None and toml is None:  # pragma: no cover
-    raise RuntimeError(
-        "No TOML parser available. Install 'toml' package or use Python 3.11+."
-    )
+    raise RuntimeError("No TOML parser available. Install 'toml' package or use Python 3.11+.")
 # ============================================================================
 # EMBEDDED LOGGER
 # ============================================================================
-
 
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with color support."""
 
     COLORS = {
-        "DEBUG": "\033[36m",  # Cyan
-        "INFO": "\033[32m",  # Green
-        "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",  # Red
-        "CRITICAL": "\033[35m",  # Magenta
+        'DEBUG': '\033[36m',    # Cyan
+        'INFO': '\033[32m',     # Green
+        'WARNING': '\033[33m',  # Yellow
+        'ERROR': '\033[31m',    # Red
+        'CRITICAL': '\033[35m', # Magenta
     }
-    RESET = "\033[0m"
+    RESET = '\033[0m'
 
     def format(self, record):
         log_color = self.COLORS.get(record.levelname, self.RESET)
         record.levelname = f"{log_color}{record.levelname}{self.RESET}"
         return super().format(record)
-
 
 def setup_logging(level=logging.INFO, log_file=None):
     """Configure logging for the CLI."""
@@ -57,30 +52,30 @@ def setup_logging(level=logging.INFO, log_file=None):
 
     # Console handler with colors
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(
-        ColoredFormatter(
-            "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-        )
-    )
+    console_handler.setFormatter(ColoredFormatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    ))
     handlers.append(console_handler)
 
     # File handler if specified
     if log_file:
         file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
-        )
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+        ))
         handlers.append(file_handler)
 
-    logging.basicConfig(level=level, handlers=handlers)
-
+    logging.basicConfig(
+        level=level,
+        handlers=handlers
+    )
 
 logger = logging.getLogger(__name__)
 
 # ============================================================================
 # EMBEDDED CONFIG MANAGER
 # ============================================================================
-
 
 class ConfigManager:
     """Manage CLI configuration."""
@@ -90,9 +85,7 @@ class ConfigManager:
         self.section = "goobits"
         if config_file is None:
             env_path = os.environ.get("MATILDA_CONFIG")
-            config_file = (
-                Path(env_path) if env_path else Path.home() / ".matilda" / "config.toml"
-            )
+            config_file = Path(env_path) if env_path else Path.home() / ".matilda" / "config.toml"
 
         self.config_file = Path(config_file)
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
@@ -126,9 +119,7 @@ class ConfigManager:
 
             full_config[self.section] = self.config
             if toml is None:
-                logger.error(
-                    "Failed to save config: 'toml' package is required for writing TOML files."
-                )
+                logger.error("Failed to save config: 'toml' package is required for writing TOML files.")
                 return False
             with open(self.config_file, "w", encoding="utf-8") as f:
                 f.write(toml.dumps(full_config))
@@ -160,29 +151,21 @@ class ConfigManager:
             config = config[k]
         config[keys[-1]] = value
 
-
 # ============================================================================
 # EMBEDDED ERROR HANDLER
 # ============================================================================
 
-
 class CLIError(Exception):
     """Base exception for CLI errors."""
-
     exit_code = 1
-
 
 class UsageError(CLIError):
     """Exception for usage errors."""
-
     exit_code = 2
-
 
 class ConfigError(CLIError):
     """Exception for configuration errors."""
-
     exit_code = 3
-
 
 def handle_error(error: Exception, verbose: bool = False):
     """Handle CLI errors consistently."""
@@ -199,18 +182,14 @@ def handle_error(error: Exception, verbose: bool = False):
             logger.info("Run with --verbose for more details")
         sys.exit(1)
 
-
 # ============================================================================
 # CLI CONTEXT
 # ============================================================================
 
-
 class CLIContext:
     """Shared context for CLI commands."""
 
-    def __init__(
-        self, config: ConfigManager, verbose: bool = False, debug: bool = False
-    ):
+    def __init__(self, config: ConfigManager, verbose: bool = False, debug: bool = False):
         self.config = config
         self.verbose = verbose
         self.debug = debug
@@ -223,7 +202,6 @@ class CLIContext:
         else:
             setup_logging(logging.WARNING)
 
-
 # ============================================================================
 # HOOK SYSTEM
 # ============================================================================
@@ -231,21 +209,16 @@ def load_hooks():
     """Load user-defined hooks."""
     try:
         import cli_hooks as hooks_module
-
         return hooks_module
     except ImportError:
-        logger.warning(
-            "No hooks module found. Please create one with your command implementations."
-        )
+        logger.warning("No hooks module found. Please create one with your command implementations.")
         logger.warning("Example:")
         logger.warning("  def on_build(ctx, **kwargs):")
         logger.warning("      print('Build command implementation')")
         return None
 
-
 _HOOKS_UNSET = object()
 _hooks = _HOOKS_UNSET
-
 
 def get_hooks():
     """Lazily load hooks to avoid import-time side effects."""
@@ -253,7 +226,6 @@ def get_hooks():
     if _hooks is _HOOKS_UNSET:
         _hooks = load_hooks()
     return _hooks
-
 
 def invoke_hook(ctx, hook_name: str, kwargs: Dict[str, Any]) -> Any:
     """Invoke a hook by name or exit with a clear error."""
@@ -266,11 +238,9 @@ def invoke_hook(ctx, hook_name: str, kwargs: Dict[str, Any]) -> Any:
     logger.error(f"Hook '{hook_name}' not implemented in cli_hooks.py")
     sys.exit(1)
 
-
 # ============================================================================
 # CLI COMMANDS
 # ============================================================================
-
 
 class DefaultCommandGroup(click.Group):
     """Route unknown positional input to the configured default command."""
@@ -284,21 +254,16 @@ class DefaultCommandGroup(click.Group):
             args.insert(0, self.default_command)
         return super().resolve_command(ctx, args)
 
-
 @click.group(
     cls=DefaultCommandGroup,
-    default_command="build",
+    default_command='build',
     invoke_without_command=True,
     no_args_is_help=False,
 )
-@click.version_option("3.0.1", "--version", "-V", prog_name="goobits")
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-@click.option("--debug", is_flag=True, help="Enable debug output")
-@click.option(
-    "--config",
-    type=click.Path(),
-    help="Path to config file (default: ~/.matilda/config.toml)",
-)
+@click.version_option('3.0.1', '--version', '-V', prog_name='goobits')
+@click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
+@click.option('--debug', is_flag=True, help='Enable debug output')
+@click.option('--config', type=click.Path(), help='Path to config file (default: ~/.matilda/config.toml)')
 @click.pass_context
 def cli(ctx, verbose, debug, config):
     """Transform simple YAML configuration into rich terminal applications with setup scripts, dependency management, and cross-platform compatibility."""
@@ -311,171 +276,79 @@ def cli(ctx, verbose, debug, config):
             return
         invoke_hook(
             ctx.obj,
-            "on_build",
-            {
-                "config_path": None,
-                "output_dir": None,
-                "output": None,
-                "backup": None,
-            },
+            'on_build',
+            {                'config_path': None,                'output_dir': None,                'output': None,                'backup': None,            },
         )
 
-
-@cli.group("conformance")
+@cli.group('conformance')
 @click.pass_obj
 def conformance_group(ctx):
     """Check a CLI against docs/cli-standard.md"""
     pass
-
-
-@conformance_group.command("check")
-@click.option(
-    "--manifest",
-    type=click.STRING,
-    default=None,
-    help="Path to version 1 conformance manifest",
-)
-@click.option(
-    "--json", is_flag=True, default=None, help="Emit a versioned JSON envelope"
-)
-@click.option(
-    "--quiet", is_flag=True, default=None, help="Suppress informational diagnostics"
-)
-@click.option(
-    "--verbose", is_flag=True, default=None, help="Write diagnostics to stderr"
-)
-@click.option(
-    "--yes", is_flag=True, default=None, help="Confirm without supplying missing input"
-)
-@click.option("--no-input", is_flag=True, default=None, help="Never prompt")
+@conformance_group.command('check')
+@click.option('--manifest', type=click.STRING, default=None,              help="Path to version 1 conformance manifest")
+@click.option('--json', is_flag=True, default=None,              help="Emit a versioned JSON envelope")
+@click.option('--quiet', is_flag=True, default=None,              help="Suppress informational diagnostics")
+@click.option('--verbose', is_flag=True, default=None,              help="Write diagnostics to stderr")
+@click.option('--yes', is_flag=True, default=None,              help="Confirm without supplying missing input")
+@click.option('--no-input', is_flag=True, default=None,              help="Never prompt")
 @click.pass_obj
 def conformance_check(ctx, manifest, json, quiet, verbose, yes, no_input):
     """Run an isolated subprocess conformance manifest"""
     try:
-        kwargs = {
-            "manifest": manifest,
-            "json": json,
-            "quiet": quiet,
-            "verbose": verbose,
-            "yes": yes,
-            "no_input": no_input,
-        }
-        invoke_hook(ctx, "on_conformance_check", kwargs)
+        kwargs = {            'manifest': manifest,            'json': json,            'quiet': quiet,            'verbose': verbose,            'yes': yes,            'no_input': no_input,        }
+        invoke_hook(ctx, 'on_conformance_check', kwargs)
     except Exception as e:
         handle_error(e, ctx.verbose)
-
-
-@cli.command("build")
-@click.argument("config_path", type=click.STRING, required=False, default=None)
-@click.option(
-    "--output-dir",
-    "-o",
-    type=click.STRING,
-    default=None,
-    help="📁 Output directory (defaults to same directory as config file)",
-)
-@click.option(
-    "--output",
-    type=click.STRING,
-    default=None,
-    help="📝 Output filename for generated CLI (defaults to 'generated_cli.py')",
-)
-@click.option(
-    "--backup",
-    is_flag=True,
-    default=None,
-    help="💾 Create backup files (.bak) when overwriting existing files",
-)
+@cli.command('build')
+@click.argument('config_path', type=click.STRING, required=False, default=None)
+@click.option('--output-dir', '-o', type=click.STRING, default=None,              help="📁 Output directory (defaults to same directory as config file)")
+@click.option('--output', type=click.STRING, default=None,              help="📝 Output filename for generated CLI (defaults to 'generated_cli.py')")
+@click.option('--backup', is_flag=True, default=None,              help="💾 Create backup files (.bak) when overwriting existing files")
 @click.pass_obj
 def build(ctx, config_path, output_dir, output, backup):
     """Build CLI and setup scripts from goobits.yaml configuration"""
     try:
-        kwargs = {
-            "config_path": config_path,
-            "output_dir": output_dir,
-            "output": output,
-            "backup": backup,
-        }
-        invoke_hook(ctx, "on_build", kwargs)
+        kwargs = {            'config_path': config_path,            'output_dir': output_dir,            'output': output,            'backup': backup,        }
+        invoke_hook(ctx, 'on_build', kwargs)
     except Exception as e:
         handle_error(e, ctx.verbose)
-
-
-@cli.command("init")
-@click.argument("project_name", type=click.STRING, required=False, default=None)
-@click.option(
-    "--template", "-t", type=click.STRING, default="basic", help="🎯 Template type"
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    default=None,
-    help="🔥 Overwrite existing goobits.yaml file",
-)
+@cli.command('init')
+@click.argument('project_name', type=click.STRING, required=False, default=None)
+@click.option('--template', '-t', type=click.STRING, default='basic',              help="🎯 Template type")
+@click.option('--force', is_flag=True, default=None,              help="🔥 Overwrite existing goobits.yaml file")
 @click.pass_obj
 def init(ctx, project_name, template, force):
     """Create initial goobits.yaml template"""
     try:
-        kwargs = {
-            "project_name": project_name,
-            "template": template,
-            "force": force,
-        }
-        invoke_hook(ctx, "on_init", kwargs)
+        kwargs = {            'project_name': project_name,            'template': template,            'force': force,        }
+        invoke_hook(ctx, 'on_init', kwargs)
     except Exception as e:
         handle_error(e, ctx.verbose)
-
-
-@cli.command("validate")
-@click.argument("config_path", type=click.STRING, required=False, default=None)
-@click.option(
-    "--verbose",
-    "-v",
-    is_flag=True,
-    default=None,
-    help="📋 Show detailed validation information",
-)
+@cli.command('validate')
+@click.argument('config_path', type=click.STRING, required=False, default=None)
+@click.option('--verbose', '-v', is_flag=True, default=None,              help="📋 Show detailed validation information")
 @click.pass_obj
 def validate(ctx, config_path, verbose):
     """Validate goobits.yaml configuration without generating files"""
     try:
-        kwargs = {
-            "config_path": config_path,
-            "verbose": verbose,
-        }
-        invoke_hook(ctx, "on_validate", kwargs)
+        kwargs = {            'config_path': config_path,            'verbose': verbose,        }
+        invoke_hook(ctx, 'on_validate', kwargs)
     except Exception as e:
         handle_error(e, ctx.verbose)
-
-
-@cli.command("migrate")
-@click.argument("path", type=click.STRING, default=None)
-@click.option(
-    "--backup", is_flag=True, default=True, help="💾 Create backup files (.bak)"
-)
-@click.option(
-    "--dry-run", is_flag=True, default=None, help="👁️ Show changes without applying them"
-)
-@click.option(
-    "--pattern",
-    type=click.STRING,
-    default="*.yaml",
-    help="🔍 File pattern for directory migration",
-)
+@cli.command('migrate')
+@click.argument('path', type=click.STRING, default=None)
+@click.option('--backup', is_flag=True, default=True,              help="💾 Create backup files (.bak)")
+@click.option('--dry-run', is_flag=True, default=None,              help="👁️ Show changes without applying them")
+@click.option('--pattern', type=click.STRING, default='*.yaml',              help="🔍 File pattern for directory migration")
 @click.pass_obj
 def migrate(ctx, path, backup, dry_run, pattern):
     """Migrate YAML configurations to 3.0.0 format"""
     try:
-        kwargs = {
-            "path": path,
-            "backup": backup,
-            "dry_run": dry_run,
-            "pattern": pattern,
-        }
-        invoke_hook(ctx, "on_migrate", kwargs)
+        kwargs = {            'path': path,            'backup': backup,            'dry_run': dry_run,            'pattern': pattern,        }
+        invoke_hook(ctx, 'on_migrate', kwargs)
     except Exception as e:
         handle_error(e, ctx.verbose)
-
 
 # ============================================================================
 # INTERACTIVE MODE (if enabled)
@@ -484,14 +357,12 @@ def migrate(ctx, path, backup, dry_run, pattern):
 # MAIN ENTRY POINT
 # ============================================================================
 
-
 def main():
     """Main entry point for the CLI."""
     try:
         cli()
     except Exception as e:
-        handle_error(e, "--verbose" in sys.argv or "--debug" in sys.argv)
+        handle_error(e, '--verbose' in sys.argv or '--debug' in sys.argv)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
