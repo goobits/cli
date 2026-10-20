@@ -138,6 +138,11 @@ def build_command(
     # Load goobits configuration
     logger.info("Loading goobits configuration")
     goobits_config = load_goobits_config(config_path)
+    if goobits_config.package_name == "goobits-cli" and goobits_config.cli.version is None:
+        from .utils import extract_version_from_pyproject
+
+        goobits_config.cli.version = extract_version_from_pyproject(config_path.parent)
+
 
     # Detect target languages from configuration
     target_languages = goobits_config.get_target_languages()

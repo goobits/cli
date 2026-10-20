@@ -1,25 +1,16 @@
-"""Version information for goobits-cli."""
+"""Read the source version from pyproject.toml or installed package metadata."""
 
+from importlib.metadata import version
 from pathlib import Path
 
-import tomllib
+import toml
 
 
 def _get_version() -> str:
-    """Read version from pyproject.toml"""
-
-    try:
-        pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
-
-        with open(pyproject_path, "rb") as f:
-            data = tomllib.load(f)
-
-        return str(data["project"]["version"])
-
-    except Exception:
-        # Fallback version if pyproject.toml can't be read
-
-        return "3.0.1"
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    if pyproject_path.is_file():
+        return str(toml.load(pyproject_path)["project"]["version"])
+    return version("goobits-cli")
 
 
 __version__ = _get_version()

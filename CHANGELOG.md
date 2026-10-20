@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-20
+
+### Added
+- `goobits conformance check` and a conformance manifest schema for checking CLI behavior.
+- The Goobits CLI standard document.
+
+### Changed
+- Repository moved to https://github.com/goobits/cli. The PyPI name `goobits-cli` and `goobits` command are unchanged.
+
+### Fixed
+- Regenerated self-hosted outputs now match the generator.
+- The missing-CLI-section validation test checks the error output correctly.
+
 ## [3.0.1] - 2025-08-26
 
 ### 🎉 FILE CONSOLIDATION RELEASE
