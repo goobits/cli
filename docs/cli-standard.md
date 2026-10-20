@@ -195,6 +195,7 @@ example's executable and fixture declarations (paths resolve from the manifest):
 ```
 
 Exit 0 means all checks passed; exit 3 reports failed rules, section links and fix hints.
+Structural validation uses the published manifest schema for every supplied declaration.
 Each manifest problem is reported separately. Independent checks still run; dependent
 checks have `skipped: true`, `passed: null` and a dependency reason in `detail`.
 Deprecated exit mappings produce passing checks with `warning: true` and stderr warnings.
