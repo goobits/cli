@@ -107,6 +107,18 @@ cli:
       commands: ["migrate"]
 
   commands:
+    conformance:
+      desc: "Check a CLI against docs/cli-standard.md"
+      subcommands:
+        check:
+          desc: "Run an isolated subprocess conformance manifest"
+          options:
+            - {name: manifest, type: str, desc: "Path to version 1 conformance manifest"}
+            - {name: json, type: flag, desc: "Emit a versioned JSON envelope"}
+            - {name: quiet, type: flag, desc: "Suppress informational diagnostics"}
+            - {name: verbose, type: flag, desc: "Write diagnostics to stderr"}
+            - {name: "yes", type: flag, desc: "Confirm without supplying missing input"}
+            - {name: no-input, type: flag, desc: "Never prompt"}
     build:
       desc: "Build CLI and setup scripts from goobits.yaml configuration"
       icon: "🔨"

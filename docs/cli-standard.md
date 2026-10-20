@@ -164,3 +164,63 @@ butter guide
 ```
 
 Butter owns its full command tree, arguments, and payloads.
+
+## Running the suite
+
+Add a version 1 JSON manifest at a documented path in your tool's repository, then run
+`goobits conformance check --manifest path/to/conformance.json --json`. Exit 0 means
+all assertions passed; exit 3 means checks failed. Each result includes the standard
+section, failure detail, and a fix hint. Run only manifests you trust: the suite executes
+their argv arrays. No shell expansion or target imports are used.
+
+The executable and fixture argv are resolved from the manifest's directory. Start with
+the executable manifest example in `src/tests/unit/test_conformance.py` (`manifest`)
+and the local backend in `src/tests/fixtures/conformance/conforming.py`:
+
+| Manifest field | Version 1 contract |
+| --- | --- |
+| `manifest_version`, `name`, `version` | `1`, executable name, executable release version string. |
+| `executable` | Nonempty argv prefix, e.g. `["python3", "cli.py"]`. |
+| `command_tree`, `entrypoint_exceptions`, `long_flags` | Full canonical paths, allowed short domain entrypoints, and supported long flag names. Every canonical leaf needs a safe probe or declared inspection command. |
+| `payload_schema` | Object with independent payload `identifier` and `version`. |
+| `help_required` | Case-insensitive help tokens (array shorthand, or concept-to-phrase object for native wording): `usage`, `arguments`, `defaults`, `examples`, `side effects`, `exit codes`, `configuration precedence`, `project`, `config`, `schema`, `mapping`, `simultaneous failures`; include retry `scope` and `retention` for mutations. |
+| `help_version` | `precedence`: `help`, `version`, or `first`; `trailing_options`: native handling description; `cases`: exact argv/expected rendering cases. Each case has `argv`, canonical `command`, `kind` (`text` for help or `version`), and boolean `json`. Include root/leaf help, both help/version orders, missing operands, conflicting quiet/verbose, and trailing JSON before/after eager rendering. Declare plain and JSON cases for both help and version. |
+| `aliases` | Array of `{argv, canonical, canonical_argv}` safe invocations, including repeated deprecated spellings in one process where supported. Use `[]` when none exist. |
+| `probes` | Map of scenario names to `{argv, command}`; argv selects JSON. Optional `exit`, `status`, `effects` (default 0), `expect` (dotted receipt paths to exact values), and `error_codes` assert tool-owned outcomes. Canonical error scenarios have fixed exit categories. Use `expect` to assert the tool's documented postconditions and partial results. |
+| `inapplicable` | Scenario names mapped to explicit reasons. Required scenarios cannot simply be omitted. Service-free tools still provide local mutation/retry probes where applicable. |
+| `retry` | For mutations: `flag`, `receipt_field` (dotted receipt path), `scope`, `retention`, and stable `conflict_code`. Mutation and lost-response probes add `different_input` argv for conflict tests and `equivalent_argv` for the same normalized input expressed differently. |
+| `fixture` | `argv` for the fixture hook, `isolation` description, optional `env` selecting the isolated endpoint/backend. Never select production services or credentials. |
+| `legacy_exits` | Optional object mapping legacy numeric exit strings to canonical categories; document their deprecation and canonical invocation in help. Exit 1 never qualifies. |
+| `timeout_seconds` | Per-subprocess deadline, default 5. A hung command is a failed check. |
+
+Required scenarios are `read`, `missing-input`, `invalid-input`, `invalid-flag`,
+`conflict` (quiet/verbose), `confirmation`, `owner-decision`, `denial`, `unavailable`,
+`verification`, `timeout`, `interrupt`, `partial-failure`, `multiple-errors`,
+`acceptance`, `completion`, `stream`, `stream-failure`, `mutation`, `lost-response`,
+`unknown-fields`, `unknown-version`, and `expiry`. Applicable confirmation additionally
+needs `confirmation-yes`. Acceptance probes specify `status: "accepted"`, an exact
+`inspection_command`, and `inspection_argv`; the latter must return completion with the
+same operation and request IDs. Streaming probes use JSONL, including a terminal receipt
+on handled failure. Set `error_codes` on unsupported-version probes. Mutation probes
+must support a generated key and a supplied key. The suite replays the supplied key,
+changes input, and repeats after a lost committed response.
+
+The fixture hook accepts one JSON request on stdin and returns one JSON object on stdout:
+`{"action":"reset"|"inspect","scenario":"SCENARIO"}`. `reset` clears state and
+configures the named fault/outcome; `inspect` observes without changing it. Both return
+`effects` and `prompts` integer counts, `service_calls` integer count,
+`request_ids` (forwarded IDs), and `postcondition` (boolean verified against actual local
+state). Retry inspection also returns `operation_id` and `request_id` from the committed
+operation. Expiry inspection returns `expired: true`; its receipt's `data.next_action`
+must match its declared `inspection_command` for inspection before retry. Unknown-field/version injections report
+`unknown_fields_sent` or `unknown_version_sent`. These observations must come from the
+backend, not hardcoded success assertions. Simulate lost responses only after committing.
+The suite provides a private `GOOBITS_CONFORMANCE_STATE` directory plus isolated HOME and
+TMPDIR, removes inherited credentials, and applies `fixture.env` to both subprocesses.
+TTY probes additionally exercise each half-TTY and JSON/no-input on a full TTY on POSIX.
+
+Existing envelopes may supply `envelope_mapping`: `documentation` (schema/mapping path),
+`fields` (each canonical envelope field to a dotted native field path), `error_fields`
+(each canonical error field to its native path), `versions` (supported native version
+strings), and `statuses` (native to canonical status values). The suite translates this
+published semantic mapping before applying the same type and behavior assertions.

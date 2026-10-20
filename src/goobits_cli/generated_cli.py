@@ -255,12 +255,14 @@ def get_hooks():
     return _hooks
 
 
-def invoke_hook(ctx, hook_name: str, kwargs: Dict[str, Any]) -> None:
+def invoke_hook(ctx, hook_name: str, kwargs: Dict[str, Any]) -> Any:
     """Invoke a hook by name or exit with a clear error."""
     hooks = get_hooks()
     if hooks and hasattr(hooks, hook_name):
-        getattr(hooks, hook_name)(ctx=ctx, **kwargs)
-        return
+        result = getattr(hooks, hook_name)(ctx=ctx, **kwargs)
+        if isinstance(result, int) and not isinstance(result, bool) and result != 0:
+            raise SystemExit(result)
+        return result
     logger.error(f"Hook '{hook_name}' not implemented in cli_hooks.py")
     sys.exit(1)
 
@@ -270,7 +272,26 @@ def invoke_hook(ctx, hook_name: str, kwargs: Dict[str, Any]) -> None:
 # ============================================================================
 
 
-@click.group()
+class DefaultCommandGroup(click.Group):
+    """Route unknown positional input to the configured default command."""
+
+    def __init__(self, *args, default_command: str, **kwargs):
+        self.default_command = default_command
+        super().__init__(*args, **kwargs)
+
+    def resolve_command(self, ctx, args):
+        if args and args[0] not in self.commands:
+            args.insert(0, self.default_command)
+        return super().resolve_command(ctx, args)
+
+
+@click.group(
+    cls=DefaultCommandGroup,
+    default_command="build",
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
+@click.version_option("3.0.1", "--version", "-V", prog_name="goobits")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.option("--debug", is_flag=True, help="Enable debug output")
 @click.option(
@@ -284,6 +305,64 @@ def cli(ctx, verbose, debug, config):
     config_path = Path(config) if config else None
     config_manager = ConfigManager(config_path)
     ctx.obj = CLIContext(config_manager, verbose, debug)
+    if ctx.invoked_subcommand is None:
+        if sys.stdin.isatty():
+            click.echo(ctx.get_help())
+            return
+        invoke_hook(
+            ctx.obj,
+            "on_build",
+            {
+                "config_path": None,
+                "output_dir": None,
+                "output": None,
+                "backup": None,
+            },
+        )
+
+
+@cli.group("conformance")
+@click.pass_obj
+def conformance_group(ctx):
+    """Check a CLI against docs/cli-standard.md"""
+    pass
+
+
+@conformance_group.command("check")
+@click.option(
+    "--manifest",
+    type=click.STRING,
+    default=None,
+    help="Path to version 1 conformance manifest",
+)
+@click.option(
+    "--json", is_flag=True, default=None, help="Emit a versioned JSON envelope"
+)
+@click.option(
+    "--quiet", is_flag=True, default=None, help="Suppress informational diagnostics"
+)
+@click.option(
+    "--verbose", is_flag=True, default=None, help="Write diagnostics to stderr"
+)
+@click.option(
+    "--yes", is_flag=True, default=None, help="Confirm without supplying missing input"
+)
+@click.option("--no-input", is_flag=True, default=None, help="Never prompt")
+@click.pass_obj
+def conformance_check(ctx, manifest, json, quiet, verbose, yes, no_input):
+    """Run an isolated subprocess conformance manifest"""
+    try:
+        kwargs = {
+            "manifest": manifest,
+            "json": json,
+            "quiet": quiet,
+            "verbose": verbose,
+            "yes": yes,
+            "no_input": no_input,
+        }
+        invoke_hook(ctx, "on_conformance_check", kwargs)
+    except Exception as e:
+        handle_error(e, ctx.verbose)
 
 
 @cli.command("build")

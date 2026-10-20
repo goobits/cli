@@ -34,7 +34,9 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
-app = typer.Typer(name="goobits", help="Unified CLI for Goobits projects")
+from .commands.conformance import GoobitsApp, conformance_app
+
+app = GoobitsApp(name="goobits", help="Unified CLI for Goobits projects")
 
 
 @app.callback()
@@ -67,6 +69,8 @@ from .commands import (
     upgrade_command,
     validate_command,
 )
+
+app.add_typer(conformance_app, name="conformance")
 
 # Register each command with its proper name
 app.command(name="build")(build_command)

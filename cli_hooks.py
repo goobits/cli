@@ -68,3 +68,10 @@ def on_migrate(    backup: bool = False,    dry_run: bool = False,    pattern: O
         "status": "success",
         "message": "migrate completed successfully"
     }
+
+
+def on_conformance_check(**kwargs):
+    """Run the shared subprocess conformance implementation."""
+    from goobits_cli.commands.conformance import generated_check
+
+    generated_check(**kwargs)
