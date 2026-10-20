@@ -755,24 +755,42 @@ class TestInstallationWorkflows:
     """Main test class for installation workflow validation."""
 
     @pytest.fixture(autouse=True)
-    def setup_method(self):
-        """Set up test environment for each test method."""
+    def setup_method(self, monkeypatch):
+        """Keep package-manager writes and installed commands in disposable dirs."""
         self.temp_dirs = []
         self.installed_packages = []
+        install_root = Path(self._create_temp_dir())
+        self.npm_prefix = install_root / "npm-prefix"
+        self.yarn_global = install_root / "yarn-global"
+        for key, value in {
+            "NPM_CONFIG_PREFIX": self.npm_prefix,
+            "NPM_CONFIG_CACHE": install_root / "npm-cache",
+        }.items():
+            # Both forms may be inherited; npm accepts either spelling.
+            monkeypatch.setenv(key, str(value))
+            monkeypatch.setenv(key.lower(), str(value))
+        monkeypatch.setenv("YARN_GLOBAL_FOLDER", str(self.yarn_global))
+        monkeypatch.setenv("YARN_CACHE_FOLDER", str(install_root / "yarn-cache"))
+        monkeypatch.setenv(
+            "PATH", str(self.npm_prefix / "bin") + os.pathsep + os.environ["PATH"]
+        )
+        try:
+            yield
+        finally:
+            self._cleanup()
 
-    def teardown_method(self):
-        """Clean up after each test method."""
-        # Clean up temporary directories
-        for temp_dir in self.temp_dirs:
-            if Path(temp_dir).exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
-
-        # Clean up installed packages
+    def _cleanup(self):
+        """Clean up before monkeypatch restores the package-manager environment."""
+        # Clean up installed packages before removing their private prefixes.
         for package_info in self.installed_packages:
             try:
                 self._uninstall_package(package_info)
             except Exception:
                 pass  # Ignore cleanup errors
+
+        for temp_dir in self.temp_dirs:
+            if Path(temp_dir).exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _create_temp_dir(self) -> str:
         """Create a temporary directory and track it for cleanup."""
@@ -811,9 +829,17 @@ class TestInstallationWorkflows:
             elif pm == "pipx":
                 PackageManagerHelper.run_command(["pipx", "uninstall", name])
             elif pm == "npm":
-                PackageManagerHelper.run_command(["npm", "uninstall", "-g", name])
+                PackageManagerHelper.run_command(
+                    ["npm", "uninstall", "-g", "--prefix", str(self.npm_prefix), name]
+                )
             elif pm == "yarn":
-                PackageManagerHelper.run_command(["yarn", "global", "remove", name])
+                PackageManagerHelper.run_command(
+                    [
+                        "yarn", "global", "remove", name,
+                        "--prefix", str(self.npm_prefix),
+                        "--global-folder", str(self.yarn_global),
+                    ]
+                )
             elif pm == "cargo":
                 PackageManagerHelper.run_command(["cargo", "uninstall", name])
         except Exception:
@@ -975,8 +1001,8 @@ class TestNodeJSInstallation(TestInstallationWorkflows):
                 raise
         self._track_installation("npm", config.package_name)
 
-        # Verify CLI is available and functional
-        self._test_cli_functionality(config.command_name)
+        result = PackageManagerHelper.run_command([config.command_name, "--help"])
+        assert "Usage:" in result.stdout
 
     def test_yarn_install_workflow(self):
         """Install with Yarn Classic, or the documented npm alternative."""
@@ -1219,8 +1245,8 @@ process.exit(0);
                 raise
         self._track_installation("npm", config.package_name)
 
-        # Verify CLI is available and functional
-        self._test_cli_functionality(config.command_name)
+        result = PackageManagerHelper.run_command([config.command_name, "--help"])
+        assert "Usage:" in result.stdout
 
     def test_typescript_generated_files_validation(self):
         """Test that generated TypeScript installation files are correct."""
