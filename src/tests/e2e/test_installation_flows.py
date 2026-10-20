@@ -241,7 +241,7 @@ class CLITestHelper:
                 file_path.chmod(0o755)
 
             # Track the main CLI file
-            if filename.endswith(".py") and ("cli" in filename or "main" in filename):
+            if filename.endswith("/cli.py") or filename in {"cli.py", "main.py"}:
                 result["cli_file"] = str(file_path)
             elif (filename.endswith(".js") or filename.endswith(".mjs")) and (
                 "cli" in filename or "main" in filename
@@ -829,42 +829,20 @@ class TestPythonInstallation(TestInstallationWorkflows):
         config = CLITestHelper.create_test_config("python")
         CLITestHelper.generate_cli(config, temp_dir)
 
-        # Test pip install in editable mode
-        # Use --break-system-packages for managed environments in CI/testing
-        try:
-            result = PackageManagerHelper.run_command(
-                ["pip", "install", "-e", "."], cwd=temp_dir
-            )
-        except PackageManagerError as e:
-            if "externally-managed-environment" in str(e):
-                # Retry with --break-system-packages for testing environments
-                result = PackageManagerHelper.run_command(
-                    ["pip", "install", "-e", ".", "--break-system-packages"],
-                    cwd=temp_dir,
-                )
-            else:
-                raise
+        # Install into a disposable environment using this test runner's Python.
+        venv_dir = Path(self._create_temp_dir())
+        PackageManagerHelper.run_command(
+            [sys.executable, "-m", "venv", str(venv_dir)]
+        )
+        python = venv_dir / "bin" / "python"
+        result = PackageManagerHelper.run_command(
+            [str(python), "-m", "pip", "install", "-e", "."], cwd=temp_dir
+        )
         assert result.returncode == 0
-        self._track_installation("pip", config.package_name)
-
-        # Verify CLI is available and functional
-        self._test_cli_functionality(config.command_name)
-
-        # Test basic CLI functionality (commands might need hooks file in working directory)
-        try:
-            hello_result = PackageManagerHelper.run_command(
-                [config.command_name, "hello", "World"], check=False
-            )
-            # Command should either work or give a helpful error about missing hooks
-            # The important thing is that the CLI is installed and responds
-            assert hello_result.returncode in [
-                0,
-                1,
-                2,
-            ], f"CLI command failed unexpectedly: {hello_result.stderr}"
-        except Exception:
-            # If business logic commands fail, that's OK - installation worked
-            pass
+        result = PackageManagerHelper.run_command(
+            [str(venv_dir / "bin" / config.command_name), "--help"]
+        )
+        assert "hello" in result.stdout
 
     @pytest.mark.skipif(
         not PackageManagerHelper.check_availability("pipx"), reason="pipx not available"
