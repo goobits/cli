@@ -129,6 +129,7 @@ class ComponentRegistry:
         self._env.filters["PascalCase"] = self._pascal_case_filter
         self._env.filters["js_string"] = self._js_string_filter
         self._env.filters["ts_type"] = self._ts_type_filter
+        self._env.filters["python_repr"] = repr
 
         logger.info(
             f"ComponentRegistry initialized with components_dir: {self.components_dir}"

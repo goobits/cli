@@ -10,6 +10,7 @@ from 0% to 70% by testing:
 - Hot-reloading capabilities
 """
 
+import ast
 import shutil
 import tempfile
 import time
@@ -18,10 +19,47 @@ from unittest.mock import patch
 
 import pytest
 
+from goobits_cli.core.schemas import GoobitsConfigSchema
 from goobits_cli.universal.component_registry import (
     ComponentMetadata,
     ComponentRegistry,
 )
+from goobits_cli.universal.ir.builder import IRBuilder
+from goobits_cli.universal.renderers.python_renderer import PythonRenderer
+
+
+@pytest.mark.parametrize("default", [False, None, "it's a path: \\tmp\nnext"])
+def test_builtin_python_template_renders_with_registry_filters(default, caplog):
+    """Registry validation and rendering must accept real Python defaults."""
+    config = GoobitsConfigSchema(
+        package_name="sample-cli",
+        command_name="sample",
+        display_name="Sample CLI",
+        description="Registry rendering regression",
+        installation={"pypi_name": "sample-cli"},
+        cli={
+            "name": "sample",
+            "tagline": "Sample CLI",
+            "commands": {
+                "hello": {
+                    "desc": "Say hello",
+                    "options": [{"name": "label", "default": default}],
+                }
+            },
+        },
+    )
+    registry = ComponentRegistry()
+    registry.load_components()
+    context = PythonRenderer().get_template_context(IRBuilder().build(config))
+    rendered = registry._env.get_template("python_cli_consolidated.j2").render(context)
+    tree = ast.parse(rendered)
+    option_defaults = [
+        ast.literal_eval(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.keyword) and node.arg == "default"
+    ]
+    assert default in option_defaults
+    assert "Template validation errors" not in caplog.text
 
 
 class TestComponentRegistryFunctional:
