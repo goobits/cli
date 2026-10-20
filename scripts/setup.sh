@@ -849,7 +849,7 @@ Get started with:
   goobits build       # Generate CLI and setup scripts
   ./scripts/setup.sh install --dev
 
-Visit https://github.com/goobits/goobits-cli for documentation.
+Visit https://github.com/goobits/cli for documentation.
 "
     echo
 }

@@ -139,7 +139,7 @@ def load_goobits_config(file_path: Path) -> "GoobitsConfigSchema":
             elif "type" in error_type:
                 error_msg += f"     {chr(128161)} Expected type: {error_type.replace('type_error.', '')}\n"
 
-        error_msg += "\n{chr(128214)} See examples at: https://github.com/goobits/goobits-cli#quick-start\n"
+        error_msg += "\n{chr(128214)} See examples at: https://github.com/goobits/cli#quick-start\n"
 
         typer.echo(error_msg, err=True)
         raise typer.Exit(1)

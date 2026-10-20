@@ -82,6 +82,6 @@ Working examples are available in the repository:
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/goobits/goobits-cli/issues)
+- **Issues**: [GitHub Issues](https://github.com/goobits/cli/issues)
 - **Troubleshooting**: [Common problems and solutions](troubleshooting.md)
 - **Configuration**: [Complete reference](configuration.md)

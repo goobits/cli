@@ -37,7 +37,7 @@ Please be respectful and constructive in all interactions. We aim to maintain a 
 
 ```bash
 # Clone the repository
-git clone https://github.com/goobits/goobits-cli
+git clone https://github.com/goobits/cli
 cd goobits-cli
 
 # Create virtual environment

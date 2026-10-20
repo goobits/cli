@@ -218,7 +218,7 @@ cargo --version   # Required for Rust targets
 ### Report Issues
 
 If problems persist:
-1. Check [GitHub Issues](https://github.com/goobits/goobits-cli/issues)
+1. Check [GitHub Issues](https://github.com/goobits/cli/issues)
 2. Include output of `goobits --version`
 3. Provide minimal reproduction case
 4. Include error messages and stack traces
@@ -227,7 +227,7 @@ If problems persist:
 
 For framework development:
 ```bash
-git clone https://github.com/goobits/goobits-cli
+git clone https://github.com/goobits/cli
 cd goobits-cli
 ./setup.sh install --dev
 ```

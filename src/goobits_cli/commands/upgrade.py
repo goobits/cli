@@ -81,7 +81,7 @@ def upgrade_command(
             target_desc = "latest version from PyPI"
 
     elif source == "git":
-        git_url = "git+https://github.com/goobits/goobits-cli.git"
+        git_url = "git+https://github.com/goobits/cli.git"
 
         if version:
             git_url += f"@{version}"

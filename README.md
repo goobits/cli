@@ -165,7 +165,7 @@ Existing `package.json`, `Cargo.toml`, or `pyproject.toml` files are preserved. 
 ### From Source
 
 ```bash
-git clone https://github.com/goobits/goobits-cli
+git clone https://github.com/goobits/cli
 cd goobits-cli
 pip install -e .[dev,test]
 ```
@@ -201,5 +201,5 @@ Proprietary and confidential (`UNLICENSED`). Copyright (c) 2026 Goobits. All rig
 
 ## Links
 
-- [GitHub Issues](https://github.com/goobits/goobits-cli/issues)
-- [GitHub Discussions](https://github.com/goobits/goobits-cli/discussions)
+- [GitHub Issues](https://github.com/goobits/cli/issues)
+- [GitHub Discussions](https://github.com/goobits/cli/discussions)

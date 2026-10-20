@@ -46,7 +46,7 @@ messages:
       goobits build       # Generate CLI and setup scripts
       ./scripts/setup.sh install --dev
 
-    Visit https://github.com/goobits/goobits-cli for documentation.
+    Visit https://github.com/goobits/cli for documentation.
   
   install_dev_success: |
     🚀 Goobits CLI Framework installed in development mode!
