@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.1.1] - 2026-10-20
+## [3.2.0] - 2026-10-20
 
-### Fixed
+### Added
 - Conformance reports every manifest problem in one run and runs independent checks.
 - Legacy CLIs can declare exit code 1 during adoption, with a deprecation warning.
+
+### Changed
 - Unusable declarations are reported and their checks are skipped.
 
 ## [3.1.0] - 2026-10-20

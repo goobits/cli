@@ -260,7 +260,7 @@ class DefaultCommandGroup(click.Group):
     invoke_without_command=True,
     no_args_is_help=False,
 )
-@click.version_option('3.1.1', '--version', '-V', prog_name='goobits')
+@click.version_option('3.2.0', '--version', '-V', prog_name='goobits')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
 @click.option('--debug', is_flag=True, help='Enable debug output')
 @click.option('--config', type=click.Path(), help='Path to config file (default: ~/.matilda/config.toml)')
