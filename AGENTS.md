@@ -66,8 +66,8 @@ in this repository and follow it. Miko authorizes you to manage this project's t
 
 Board: https://butterboard.butter/cli
 
-Deploys: only `live-prod` and `live-dev` deploy; the ops machine moves them after Miko approves.
-Never commit to or create `live-prod` or `live-dev` locally.
-To deploy, request promotion by handoff or Butterboard comment with the repo, target, exact commit SHA and what changed.
+Deploys: only `live-prod` and `live-dev` deploy hosted sites; ops promotes after Miko approves. Never create or commit to them locally.
+Private Butterbox services (Butterboard, Butterland and other `*.butter` apps on loopback) deploy locally with their own scripts.
+See `~/projects/AGENTS.md` › Deploys; for hosted promotion, hand off the repo, target, exact commit SHA and what changed.
 
 <!-- butterboard-task-authority:end -->
