@@ -367,13 +367,10 @@ def test_dispatch_false_cannot_hide_observed_forwarding(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "method,name,mapped", [("retry", "mutation", 2), ("interaction", "confirmation", 4)]
+    "method,name", [("retry", "mutation"), ("interaction", "confirmation")]
 )
-def test_reserved_exit_one_cannot_become_a_legacy_category(
-    tmp_path, monkeypatch, method, name, mapped
-):
+def test_unmapped_exit_one_stays_a_crash(tmp_path, monkeypatch, method, name):
     suite = target(tmp_path)
-    suite.manifest["legacy_exits"] = {"1": mapped}
     execute = suite.run
 
     def run(argv, hook=False, request=None):
@@ -388,14 +385,14 @@ def test_reserved_exit_one_cannot_become_a_legacy_category(
         getattr(suite, method)(*args)
 
 
-def test_manifest_rejects_reserved_exit_mapping(tmp_path):
+def test_manifest_requires_legacy_adoption_invocation(tmp_path):
     suite = target(tmp_path)
     suite.manifest["legacy_exits"] = {"1": 2}
-    with pytest.raises(AssertionError, match="reserved|crash"):
+    with pytest.raises(AssertionError, match="canonical_exit_invocation"):
         suite.validate_manifest()
 
 
-def test_schema_rejects_reserved_exit_mapping():
+def test_schema_accepts_documented_legacy_exit_one():
     import jsonschema
 
     from .test_conformance import FIXTURES
@@ -406,8 +403,7 @@ def test_schema_rejects_reserved_exit_mapping():
     value = manifest()
     value["legacy_exits"] = {"1": 2}
     value["canonical_exit_invocation"] = "tiny --canonical-exits item read"
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(value, schema)
+    jsonschema.validate(value, schema)
 
 
 @pytest.mark.parametrize(

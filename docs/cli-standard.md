@@ -103,8 +103,13 @@ exit 0 only on completion. Categories derive from vm repository
 
 New commands MUST use canonical codes. Existing exit contracts MAY retain old codes
 during documented deprecation; help and the manifest MUST map each legacy code to its
-canonical category and identify the canonical-code invocation or version. Exit 1 always
-denotes failure.
+canonical category and identify the canonical-code invocation or version. While a legacy
+mapping is declared, help MUST document that mapping and its deprecation instead of
+the full canonical table. `legacy_exits: {"1": 5}` may declare an existing 0/1
+contract: exit 1 is a lossy bucket for any handled failure, with category 5 as its
+fallback. The suite accepts it for required nonzero outcomes and reports a deprecation
+warning. Structured error and failure-receipt checks still apply. Exit 1 never means
+success; without an explicit mapping it remains reserved for crashes.
 
 ## Work, retries, and versions
 
@@ -190,6 +195,9 @@ example's executable and fixture declarations (paths resolve from the manifest):
 ```
 
 Exit 0 means all checks passed; exit 3 reports failed rules, section links and fix hints.
+Each manifest problem is reported separately. Independent checks still run; dependent
+checks have `skipped: true`, `passed: null` and a dependency reason in `detail`.
+Deprecated exit mappings produce passing checks with `warning: true` and stderr warnings.
 Only run trusted manifests: both argv arrays execute subprocesses. The suite supplies a
 private `GOOBITS_CONFORMANCE_STATE`, HOME and TMPDIR in the system temporary directory
 (or `MATILDA_ARTIFACT_ROOT` when set), strips inherited credentials, and

@@ -57,8 +57,8 @@ def test_every_rule_accepts_conforming_and_rejects_broken(tmp_path):
 def test_manifest_cannot_omit_required_scenario(tmp_path, scenario):
     value = manifest()
     del value["probes"][scenario]
-    results = check_manifest(write_manifest(tmp_path, value))
-    assert not results[0]["passed"]
+    problems = Suite(value, tmp_path, str(tmp_path)).validate_manifest(collect=True)
+    assert any(path == "probes." + scenario for path, _ in problems)
 
 
 @pytest.mark.parametrize(

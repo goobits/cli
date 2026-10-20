@@ -67,7 +67,10 @@ def run_cli(argv: List[str]) -> int:
                 raise ValueError("Expected conformance check --manifest PATH")
             checks = check_manifest(Path(args[1]))
             data = {"schema": "goobits.conformance.check/1", "checks": checks}
-            if any(not check["passed"] for check in checks):
+            for check in checks:
+                if check.get("warning"):
+                    print(check["detail"], file=sys.stderr)
+            if any(check["passed"] is False for check in checks):
                 code = 3
                 errors = [
                     {
@@ -117,13 +120,19 @@ def run_cli(argv: List[str]) -> int:
         for check in (data or {}).get("checks", []):
             print(
                 "{} {} ({}) {}".format(
-                    "PASS" if check["passed"] else "FAIL",
+                    "SKIP"
+                    if check.get("skipped")
+                    else "WARN"
+                    if check.get("warning")
+                    else "PASS"
+                    if check["passed"]
+                    else "FAIL",
                     check["rule"],
                     check["section"],
                     check["detail"],
                 )
             )
-            if not check["passed"]:
+            if check["passed"] is False:
                 print("  Fix: " + check["fix_hint"])
         for error in errors:
             print(error["message"], file=sys.stderr)

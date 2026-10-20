@@ -67,19 +67,9 @@ FLAG_CASES = {
 # fmt: on
 FLAG_CASES["no-bypass"] = FLAG_CASES["decision"] + [("none", ["--yes", "--json"])]
 HELP_TOPICS = (
-    "usage",
-    "arguments",
-    "defaults",
-    "examples",
-    "side effects",
-    "exit codes",
-    "configuration precedence",
-    "project",
-    "config",
-    "schema",
-    "mapping",
-    "simultaneous failures",
-)
+    "usage|arguments|defaults|examples|side effects|exit codes|"
+    "configuration precedence|project|config|schema|mapping|simultaneous failures"
+).split("|")
 
 
 def help_matrix(manifest):
@@ -205,29 +195,21 @@ def map_envelope(doc: dict, mapping: dict) -> dict:
 
 
 class Suite:
+    # fmt: off
     def __init__(self, manifest: dict, base: Path, state: str):
-        self.manifest = manifest
+        self.manifest = manifest if isinstance(manifest, dict) else {}
+        manifest = self.manifest
         self.base = base
         self.results = []
         self.baselines = {}
-        # Do not pass credentials or service configuration from the calling shell.
-        self.env = {
-            key: value
-            for key, value in os.environ.items()
-            if key in {"PATH", "SYSTEMROOT", "LANG"}
-        }
-        self.env.update(
-            {
-                "HOME": state,
-                "TMPDIR": state,
-                "NO_COLOR": "1",
-                "TERM": "dumb",
-                "PYTHONDONTWRITEBYTECODE": "1",
-                "GOOBITS_CONFORMANCE_STATE": state,
-            }
-        )
-        self.env.update(manifest.get("fixture", {}).get("env", {}))
+        self.env = {k: os.environ[k] for k in ("PATH", "SYSTEMROOT", "LANG") if k in os.environ}
+        self.env.update(HOME=state, TMPDIR=state, NO_COLOR="1", TERM="dumb",
+                        PYTHONDONTWRITEBYTECODE="1", GOOBITS_CONFORMANCE_STATE=state)
+        fixture = manifest.get("fixture", {})
+        if isinstance(fixture, dict) and isinstance(fixture.get("env", {}), dict):
+            self.env.update(fixture.get("env", {}))
 
+    # fmt: on
     def check(self, rule: str, section: str, action, hint: str) -> None:
         try:
             action()
@@ -331,119 +313,109 @@ class Suite:
         assert isinstance(value, dict), "fixture hook must return an object"
         return value
 
-    def validate_manifest(self):
-        m = self.manifest
-        assert type(m["manifest_version"]) is int and m["manifest_version"] == 1
-        for argv in (m["executable"], m["fixture"]["argv"]):
-            assert isinstance(argv, list) and argv, "argv must be a nonempty array"
-            assert all(isinstance(a, str) for a in argv), "argv entries must be strings"
-        assert (
-            m["fixture"]["isolation"]
-            and m["payload_schema"]["identifier"]
-            and m["payload_schema"]["version"]
-        )
-        assert m["version"] and "read" in m["probes"]
-        assert "1" not in m.get("legacy_exits", {}), "reserved exit 1 denotes a crash"
-        for command in m["command_tree"]:
-            parts = command.split()
-            assert parts[0] == m["name"] and (
-                len(parts) >= 3 or command in m.get("entrypoint_exceptions", [])
-            )
-            assert all(re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", p) for p in parts)
-        assert all(
-            re.fullmatch(r"--[a-z][a-z0-9]*(?:-[a-z0-9]+)*", f) for f in m["long_flags"]
-        )
-        for name in SCENARIOS:
-            assert name in m["probes"] or m["inapplicable"].get(name), (
-                "missing scenario: " + name
-            )
-        prefixes = {
-            " ".join(c.split()[:i])
-            for c in m["command_tree"]
-            for i in range(1, len(c.split()) + 1)
-        }
-        for name, spec in m["probes"].items():
-            assert spec["argv"] and spec["command"] in prefixes, (
-                "probe must name a canonical resolved path"
-            )
-            contract = CONTRACTS.get(name, {})
-            for field in contract.get("fields", ()):
-                assert spec[field], "scenario requires " + field
-            assert all(n in m["probes"] for n in contract.get("requires", ()))
-        cases = self.command_cases()
-        for command in m["command_tree"]:
-            assert command in cases, "provide flag cases for every command path"
-            assert cases[command][1]["command"] == command, (
-                "flag probe must exercise its declared path"
-            )
-        for alias in m["aliases"]:
-            assert alias["canonical"] in m["command_tree"]
-        h = m["help_version"]
-        assert h["precedence"] in {"help", "version", "first"}
-        assert h["trailing_options"] in {"recognized", "eager"}
-        if "missing-input" in m["probes"]:
-            missing = m["probes"]["missing-input"]
-            assert h["missing_argv"] == [
-                a for a in missing["argv"] if a not in SHARED
-            ], "missing-input help case must use the actual missing invocation"
-            assert h["missing_command"] == missing["command"]
-        actual = {c["id"]: c for c in h["cases"]}
-        for case in help_matrix(m):
-            assert actual.get(case["id"]) == case, (
-                "missing or inconsistent help matrix case: " + case["id"]
-            )
-        docs = m["help_required"]
-        assert isinstance(docs, dict), (
-            "help documentation must declare concrete passages, not keywords"
-        )
+    # fmt: off
+    def validate_manifest(self, collect=False):
+        """Evaluate every independent declaration; paths also identify dependencies."""
+        m, rules = self.manifest, []
+
+        def rule(path, test, hint="invalid or missing declaration"):
+            try:
+                assert test(), hint
+            except (AssertionError, LookupError, TypeError, AttributeError, ValueError, StopIteration) as exc:
+                rules.append((path, path + ": " + (str(exc) or hint)))
+
+        for field, kind in {"name": str, "version": str, "executable": list, "fixture": dict,
+                            "payload_schema": dict, "command_tree": list, "long_flags": list,
+                            "probes": dict, "inapplicable": dict, "aliases": list,
+                            "help_version": dict, "help_required": dict}.items():
+            rule(field, lambda field=field, kind=kind: isinstance(m.get(field), kind) and (bool(m[field]) or field in {"aliases", "inapplicable"}))
+        rule("manifest_version", lambda: type(m["manifest_version"]) is int and m["manifest_version"] == 1)
+        for path in ("executable", "fixture.argv"):
+            rule(path, lambda path=path: isinstance(lookup(m, path), list) and bool(lookup(m, path)) and all(isinstance(a, str) for a in lookup(m, path)), "argv must be a nonempty string array")
+        for path in ("fixture.isolation", "payload_schema.identifier", "payload_schema.version"):
+            rule(path, lambda path=path: bool(lookup(m, path)))
+        probes = m.get("probes") if isinstance(m.get("probes"), dict) else {}
+        tree = m.get("command_tree") if isinstance(m.get("command_tree"), list) else []
+        for index, command in enumerate(tree):
+            rule(f"command_tree.{index}", lambda command=command: command.split()[0] == m["name"] and (len(command.split()) >= 3 or command in m.get("entrypoint_exceptions", [])) and all(re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", p) for p in command.split()))
+        for index, flag in enumerate(m.get("long_flags", []) if isinstance(m.get("long_flags"), list) else []):
+            rule(f"long_flags.{index}", lambda flag=flag: bool(re.fullmatch(r"--[a-z][a-z0-9]*(?:-[a-z0-9]+)*", flag)))
+        for name in sorted(SCENARIOS):
+            rule("probes." + name, lambda name=name: name in probes or bool(m["inapplicable"].get(name)), "missing scenario")
+        rule("probes.read", lambda: "read" in probes)
+        prefixes = {" ".join(c.split()[:i]) for c in tree if isinstance(c, str) for i in range(1, len(c.split()) + 1)}
+        for name, spec in probes.items():
+            path = "probes." + name
+            rule(path + ".argv", lambda spec=spec: isinstance(spec["argv"], list) and bool(spec["argv"]) and all(isinstance(a, str) for a in spec["argv"]))
+            rule(path + ".command", lambda spec=spec: spec["command"] in prefixes, "probe must name a canonical resolved path")
+            for field in CONTRACTS.get(name, {}).get("fields", ()):
+                rule(path + "." + field, lambda field=field, spec=spec: bool(spec[field]), "scenario requires " + field)
+            for required in CONTRACTS.get(name, {}).get("requires", ()):
+                rule(path + ".requires." + required, lambda required=required: required in probes)
+        try:
+            cases = self.command_cases()
+        except (LookupError, TypeError, AttributeError):
+            cases = {}
+        for command in tree:
+            rule("flag_probes." + str(command), lambda command=command: command in cases and bool(cases[command][1].get("argv")) and cases[command][1]["command"] == command, "provide flag cases for every command path")
+        for index, alias in enumerate(m.get("aliases", []) if isinstance(m.get("aliases"), list) else []):
+            rule(f"aliases.{index}", lambda alias=alias: alias["canonical"] in tree)
+        h = m.get("help_version") if isinstance(m.get("help_version"), dict) else {}
+        for field, values in {"precedence": {"help", "version", "first"}, "trailing_options": {"recognized", "eager"}}.items():
+            rule("help_version." + field, lambda field=field, values=values: h[field] in values)
+        if "missing-input" in probes:
+            for field, expected in {"missing_argv": lambda: [a for a in probes["missing-input"]["argv"] if a not in SHARED], "missing_command": lambda: probes["missing-input"]["command"]}.items():
+                rule("help_version." + field, lambda expected=expected, field=field: h[field] == expected(), "missing-input help case must use the actual missing invocation")
+        for index, (case_id, *_) in enumerate(HELP_CASES):
+            rule("help_version.cases." + case_id, lambda case_id=case_id, index=index: next(c for c in h["cases"] if c["id"] == case_id) == help_matrix(m)[index], "missing or inconsistent help matrix case: " + case_id)
+        docs = m.get("help_required") if isinstance(m.get("help_required"), dict) else {}
         for topic in HELP_TOPICS:
-            assert (
-                isinstance(docs[topic], str)
-                and len(docs[topic].strip()) > len(topic) + 3
-            ), "help documentation: " + topic
-        assert (
-            str(m["payload_schema"]["version"]) in docs["schema"]
-            and m["payload_schema"]["identifier"] in docs["schema"]
-        )
-        for code in (0, 1, 2, 3, 4, 5, 124, 130):
-            assert re.search(
-                r"(?<![0-9])" + str(code) + r"(?![0-9])", docs["exit codes"]
-            ), "document exit mappings"
-        if "mutation" in m["probes"]:
-            retry = m["retry"]
+            rule("help_required." + topic, lambda topic=topic: isinstance(docs[topic], str) and len(docs[topic].strip()) > len(topic) + 3, "help documentation: " + topic)
+        rule("help_required.schema", lambda: str(m["payload_schema"]["version"]) in docs["schema"] and m["payload_schema"]["identifier"] in docs["schema"])
+        legacy = m.get("legacy_exits", {})
+        rule("legacy_exits", lambda: isinstance(legacy, dict) and all(k.isdecimal() and type(v) is int and v in {0, 2, 3, 4, 5, 124, 130} and (k != "1" or v != 0) for k, v in legacy.items()))
+        if isinstance(legacy, dict):
+            for code in ((0,) if legacy else (0, 1, 2, 3, 4, 5, 124, 130)):
+                rule("help_required.exit codes." + str(code), lambda code=code: bool(re.search(r"(?<![0-9])" + str(code) + r"(?![0-9])", docs["exit codes"])), "document exit mappings")
+            if legacy:
+                rule("canonical_exit_invocation", lambda: bool(m["canonical_exit_invocation"]))
+        if "mutation" in probes:
             for field in "flag receipt_field scope retention conflict_code".split():
-                assert retry[field]
-            assert (
-                retry["scope"] in docs["scope"]
-                and retry["retention"] in docs["retention"]
+                rule("retry." + field, lambda field=field: bool(m["retry"][field]))
+            for field in ("scope", "retention"):
+                rule("retry." + field, lambda field=field: m["retry"][field] in docs[field])
+        if not collect:
+            assert not rules, "; ".join(detail for _, detail in rules)
+        return rules
+
+    # fmt: on
+    def category(self, result, expected=None):
+        legacy = self.manifest.get("legacy_exits", {})
+        if result.returncode == 1:
+            assert legacy.get("1") in {2, 3, 4, 5, 124, 130}, (
+                "reserved exit 1 denotes a crash"
             )
+            assert expected != 0, "legacy exit 1 always denotes failure"
+            return expected if expected is not None else legacy["1"]
+        return legacy.get(str(result.returncode), result.returncode)
 
-    def category(self, result):
-        assert result.returncode != 1, "reserved exit 1 denotes a crash"
-        return self.manifest.get("legacy_exits", {}).get(
-            str(result.returncode), result.returncode
-        )
-
+    # fmt: off
     def command_cases(self):
-        cases = {
-            p["command"]: (n, p)
-            for n, p in reversed(list(self.manifest["probes"].items()))
-            if n != "lost-response"
-        }
-        for command, name in self.manifest.get("flag_probes", {}).items():
-            cases[command] = (name, self.manifest["probes"][name])
-        for name, spec in self.manifest["probes"].items():
-            if "inspection_argv" in spec:
-                inspection = dict(
-                    spec,
-                    argv=spec["inspection_argv"],
-                    command=spec["inspection_command"],
-                    status="completed",
-                    effects=spec.get("inspection_effects", 0),
-                    setup_argv=spec["argv"],
-                )
+        probes = self.manifest.get("probes", {})
+        probes = probes if isinstance(probes, dict) else {}
+        cases = {p["command"]: (n, p) for n, p in reversed(list(probes.items()))
+                 if n != "lost-response" and isinstance(p, dict) and isinstance(p.get("command"), str)}
+        flags = self.manifest.get("flag_probes", {})
+        for command, name in (flags if isinstance(flags, dict) else {}).items():
+            cases[command] = (name, probes[name] if isinstance(name, str) and isinstance(probes.get(name), dict) else {"command": command})
+        for name, spec in probes.items():
+            if isinstance(spec, dict) and "inspection_argv" in spec and isinstance(spec.get("inspection_command"), str):
+                inspection = dict(spec, argv=spec["inspection_argv"], command=spec["inspection_command"],
+                                  status="completed", effects=spec.get("inspection_effects", 0), setup_argv=spec.get("argv", []))
                 cases.setdefault(spec["inspection_command"], (name, inspection))
-        return {c: cases[c] for c in self.manifest["command_tree"] if c in cases}
+        tree = self.manifest.get("command_tree", [])
+        return {c: cases.get(c, ("read", {"command": c})) for c in (tree if isinstance(tree, list) else []) if isinstance(c, str)}
+    # fmt: on
 
     def probe(self, name: str, argv=None, reset=True, spec=None, tty="none") -> tuple:
         spec = spec or self.manifest["probes"][name]
@@ -461,7 +433,7 @@ class Suite:
         last = docs[-1]
         assert last["command"] == spec["command"], "report deepest canonical command"
         expected = contract.get("exit", spec.get("exit", 0))
-        actual = self.category(result)
+        actual = self.category(result, expected)
         assert actual == expected, "exit category mismatch"
         assert (actual == 0) == last["ok"], "exit and success disagree"
         assert last["status"] == spec.get(
@@ -529,6 +501,7 @@ class Suite:
                     code in text
                     and str(category) in text
                     and self.manifest["canonical_exit_invocation"] in text
+                    and "deprecat" in text.lower()
                 )
         after = self.fixture("inspect")
         assert after["effects"] == before["effects"] and after["service_calls"] == 0
@@ -592,7 +565,7 @@ class Suite:
         args = [a for a in spec["argv"] if a != "--json"] + flags
         self.fixture("reset", name)
         result = self.run(args) if tty == "none" else self.terminal_run(args, tty)
-        assert self.category(result) == CODES[name], (
+        assert self.category(result, CODES[name]) == CODES[name], (
             "noninteractive missing input/decision must fail in its category"
         )
         state = self.fixture("inspect", name)
@@ -606,7 +579,7 @@ class Suite:
         self.fixture("reset")
         result = self.run(alias["argv"] + (["--quiet"] if quiet else []))
         doc = self.decode(result.stdout)[-1]
-        assert self.category(result) == 0 and doc["command"] == alias["canonical"]
+        assert self.category(result, 0) == 0 and doc["command"] == alias["canonical"]
         lines = [line for line in result.stderr.splitlines() if line.strip()]
         assert (
             len(lines) == 1
@@ -630,14 +603,14 @@ class Suite:
         first = self.run(argv)
         first_doc = self.decode(first.stdout)[-1]
         expected = 5 if scenario == "lost-response" else 0
-        assert self.category(first) == expected
+        assert self.category(first, expected) == expected
         assert first_doc["ok"] == (expected == 0)
         before = self.fixture("inspect", scenario)
         assert before["effects"] == 1, "first submission must commit once"
         equivalent = spec["equivalent_argv"] + [self.manifest["retry"]["flag"], key]
         second = self.run(equivalent)
         doc = self.decode(second.stdout)[-1]
-        assert self.category(second) == 0 and doc["ok"]
+        assert self.category(second, 0) == 0 and doc["ok"]
         after = self.fixture("inspect", scenario)
         assert after["effects"] == 1, "retry duplicated effects"
         assert lookup(doc, self.manifest["retry"]["receipt_field"]) == key
@@ -650,7 +623,7 @@ class Suite:
             )
         conflict = self.run(argv + spec["different_input"])
         failed = self.decode(conflict.stdout)[-1]
-        assert self.category(conflict) == 2 and not failed["ok"]
+        assert self.category(conflict, 2) == 2 and not failed["ok"]
         assert failed["errors"][0]["code"] == self.manifest["retry"]["conflict_code"]
         assert self.fixture("inspect", scenario)["effects"] == 1
 
@@ -659,30 +632,60 @@ class Suite:
         _, accepted, state = self.probe("acceptance")
         result = self.run(spec["inspection_argv"])
         completed = self.decode(result.stdout)[-1]
-        assert self.category(result) == 0 and completed["status"] == "completed"
+        assert self.category(result, 0) == 0 and completed["status"] == "completed"
         for path in ("data.operation_id", "request_id"):
             assert lookup(accepted[-1], path) == lookup(completed, path)
         assert self.fixture("inspect")["postcondition"]
 
+    # fmt: off
     def execute(self) -> list:
-        def check(rule, section, fn, *args):
-            hint = f"Apply docs/cli-standard.md#{SECTIONS[section]}; {rule}"
-            self.check(rule, section, lambda: fn(*args), hint)
+        problems = self.validate_manifest(collect=True) or []
+        for path, detail in problems:
+            self.check("manifest/" + path, "manifest", lambda: None, "Correct " + path)
+            self.results[-1].update(passed=False, detail=detail)
+        if not problems:
+            self.check("manifest", "manifest", lambda: None, "Keep declarations current")
+        probes = self.manifest.get("probes", {})
+        probes = probes if isinstance(probes, dict) else {}
 
-        check("manifest", "manifest", self.validate_manifest)
-        if not self.results[-1]["passed"]:
-            return self.results
-        for case in self.manifest["help_version"]["cases"]:
-            check("help-version/" + case["id"], "commands", self.help_case, case)
-        for name in self.manifest["probes"]:
+        def check(rule, section, fn, *args):
+            needs = ["executable", "fixture", "envelope_mapping", "timeout_seconds"] + (["flag_probes." + rule.split("/")[1]] if rule.startswith("flag/") else [])
+            if rule.startswith("help-version/"):
+                case = args[0]
+                needs += ["help_version.cases." + case["id"]] + (["version"] if case.get("kind") == "version" else ["help_required", "help_version.scope_usage", "canonical_exit_invocation", "legacy_exits"])
+            else:
+                needs += ["legacy_exits"] + (["flag_probes." + rule.split("/", 2)[-1]] if rule.startswith("json/color-capable-tty/") else [])
+                name = args[2] if rule.startswith("flag/") else args[0] if args else "acceptance"
+                if isinstance(name, str):
+                    needs += ["probes." + name + "." + f for f in "argv command expect effects status stream dispatch error_codes setup_argv inspection_command".split()]
+                    if rule.startswith("retry/"):
+                        needs += ["retry", "probes." + name]
+                    if rule.startswith("flag/"):
+                        if args[0] == "--yes" and CONTRACTS.get(name, {}).get("yes_variant"):
+                            needs += ["probes." + CONTRACTS[name]["yes_variant"]]
+                if rule.startswith("alias/"):
+                    needs += ["aliases." + rule.split("/")[1], "probes.read"]
+            blocked = [detail for path, detail in problems if any(path == n or path.startswith(n + ".") or n.startswith(path + ".") for n in needs)]
+            hint = f"Apply docs/cli-standard.md#{SECTIONS[section]}; {rule}"
+            self.check(rule, section, lambda: None if blocked else fn(*args), hint)
+            if blocked:
+                self.results[-1].update(passed=None, skipped=True, detail="Depends on: " + "; ".join(blocked))
+
+        legacy = self.manifest.get("legacy_exits", {})
+        if isinstance(legacy, dict) and legacy and not any(p == "legacy_exits" for p, _ in problems):
+            self.check("legacy-exits/deprecated", "exits", lambda: None, "Adopt canonical exits via the documented invocation")
+            self.results[-1].update(warning=True, detail="Legacy exit mapping is deprecated: " + json.dumps(legacy))
+        h = self.manifest.get("help_version", {})
+        actual = {c.get("id"): c for c in h.get("cases", []) if isinstance(c, dict) and isinstance(c.get("id"), str)} if isinstance(h, dict) and isinstance(h.get("cases", []), list) else {}
+        for case_id in dict.fromkeys([c[0] for c in HELP_CASES] + list(actual)):
+            case = actual.get(case_id, {"id": case_id})
+            check("help-version/" + str(case_id), "commands", self.help_case, case)
+        for name in dict.fromkeys([*sorted(SCENARIOS), *probes]):
+            if name not in probes and not any(p == "probes." + name for p, _ in problems):
+                continue
             contract = CONTRACTS.get(name, {})
             method = contract.get("method", "probe")
-            check(
-                method + "/" + name,
-                "work" if method == "retry" else "output",
-                getattr(self, method),
-                name,
-            )
+            check(method + "/" + name, "work" if method == "retry" else "output", getattr(self, method), name)
             if contract.get("stable"):
                 check("stable-error/" + name, "output", self.stable_error, name)
             if "also" in contract:
@@ -694,15 +697,9 @@ class Suite:
                 rule = f"flag/{command}/{flag}/{side}"
                 check(rule, "commands", self.flag, flag, before, name, spec)
             if os.name == "posix":
-                check(
-                    "json/color-capable-tty/" + command,
-                    "output",
-                    self.json_terminal,
-                    name,
-                    spec,
-                )
+                check("json/color-capable-tty/" + command, "output", self.json_terminal, name, spec)
         for name, contract in CONTRACTS.items():
-            if name not in self.manifest["probes"] or not contract.get("interaction"):
+            if name not in probes or not contract.get("interaction"):
                 continue
             variants = FLAG_CASES[contract["interaction"]] + (
                 FLAG_CASES["tty"] if os.name == "posix" else []
@@ -710,11 +707,13 @@ class Suite:
             for index, (tty, flags) in enumerate(variants):
                 rule = f"interaction/{name}/{index}"
                 check(rule, "output", self.interaction, name, flags, tty)
-        for index, alias in enumerate(self.manifest["aliases"]):
+        for index, alias in enumerate(self.manifest.get("aliases", []) if isinstance(self.manifest.get("aliases"), list) else []):
             for quiet in (False, True):
                 rule = f"alias/{index}/{quiet}"
                 check(rule, "commands", self.alias, alias, quiet)
         return self.results
+
+    # fmt: on
 
 
 def lookup(value: Any, path: str) -> Any:

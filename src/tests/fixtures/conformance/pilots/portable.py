@@ -43,7 +43,7 @@ else:
         or {"--quiet", "--verbose"}.issubset(args)
         or (command.endswith("require") and "INPUT" not in args)
     ):
-        code = 2 if "--canonical-exits" in args else 22
+        code = 2 if "--canonical-exits" in args else (1 if language == "legacy" else 22)
     if "--verbose" in args:
         print("native diagnostic", file=sys.stderr)
     data = None if code else {"schema": "pilot.payload/2", "value": "value"}

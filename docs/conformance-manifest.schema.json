@@ -463,10 +463,7 @@
     "legacy_exits": {
       "type": "object",
       "propertyNames": {
-        "pattern": "^[0-9]+$",
-        "not": {
-          "const": "1"
-        }
+        "pattern": "^[0-9]+$"
       },
       "additionalProperties": {
         "type": "integer",
@@ -479,6 +476,19 @@
           124,
           130
         ]
+      },
+      "description": "Deprecated legacy exit codes mapped to canonical categories. Declared exit 1 is a lossy bucket for any handled failure; it never permits success. Help must document the mapping, deprecation and canonical-code invocation.",
+      "properties": {
+        "1": {
+          "enum": [
+            2,
+            3,
+            4,
+            5,
+            124,
+            130
+          ]
+        }
       }
     },
     "canonical_exit_invocation": {
