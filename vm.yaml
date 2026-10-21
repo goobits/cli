@@ -17,19 +17,6 @@ profiles:
   docker:
     provider: docker
     ports: {}
-  podman:
-    provider: podman
-    ports: {}
-  tart:
-    provider: tart
-    tart:
-      guest_os: linux
-      disk_size: 80
-      ssh_user: admin
-      install_docker: true
-    vm:
-      image: vibe-tart-linux-base
-    ports: {}
 environments:
   dev:
     provider: docker
