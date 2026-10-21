@@ -61,8 +61,11 @@ Do not add a language-specific path that bypasses the shared schema and IR unles
 
 ## Current work lives in Butterboard
 
-Tasks for `goobits-cli` live in Butterboard. Before working on them, run `butterboard guide`
+Tasks for `goobits-cli` live in Butterboard. Before working on them, run `butter guide`
 in this repository and follow it. Miko authorizes you to manage this project's tasks with its key.
+
+Host (Mac): `butter` is in `~/.local/bin`; if missing, run `~/projects/butterboard/scripts/install-cli.sh`.
+VM guest: `butter` is in `~/.local/bin`; if missing, run `vm tools update butterboard`.
 
 Board: https://butterboard.butter/cli
 
